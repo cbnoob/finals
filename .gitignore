@@ -6,7 +6,10 @@ venv/
 output/
 runs/
 models/*.pt
-datasets/
+datasets/**/images/
+datasets/**/labels/
+datasets/**/data.yaml
+!datasets/**/data.yaml.example
 *.jpg
 *.png
 .idea/

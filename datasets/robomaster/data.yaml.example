@@ -1,0 +1,6 @@
+# Rename to data.yaml after labeling images
+path: datasets/robomaster
+train: images/train
+val: images/val
+names:
+  - robomaster
