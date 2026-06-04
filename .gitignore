@@ -12,5 +12,6 @@ datasets/**/data.yaml
 !datasets/**/data.yaml.example
 *.jpg
 *.png
+.pytest_cache/
 .idea/
 .vscode/

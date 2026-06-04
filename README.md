@@ -70,6 +70,21 @@ python run_challenge2.py
 - **RoboMaster bodies:** label data → `python scripts/train_yolo.py`
 - **Mapping drone NPU:** export trained model with organizer ONNX/RKNN scripts on Discord
 
+## Testing
+
+Two tiers. **Tier 1** runs on any laptop (no drone/camera/ROS2):
+
+```bash
+pip install opencv-contrib-python numpy PyYAML pytest
+python -m pytest tests/ -v          # 19 unit tests: ArUco, depth math, Dola, nav P-controller, config
+python scripts/aruco_demo.py        # visual check -> output/aruco_demo.png
+```
+
+**Tier 2** (needs hardware) — bring-up checks on the real machines:
+
+- Mapping drone: confirm UWB topic publishes (`ros2 topic echo /uwb_tag`), MAVSDK connects, RealSense streams, offboard arms.
+- Swarm: confirm Dola finds drone IPs on WiFi, `pyhulax` connects, video frames arrive.
+
 ## Tuning navigation
 
 Edit `navigation` section in `config/challenge.yaml` (`kp_xy`, `max_vel_xy`, thresholds). Match organizer `kolomee.py` defaults first, then tune in arena.
