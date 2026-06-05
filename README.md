@@ -102,10 +102,19 @@ Two tiers. **Tier 1** runs on any laptop (no drone/camera/ROS2):
 
 ```bash
 pip install opencv-contrib-python numpy PyYAML pytest
-python -m pytest tests/ -v          # 28 unit tests: ArUco, depth, Dola, nav, RKNN decoder, occupancy grid, config
+python -m pytest tests/ -v          # unit tests (incl. full dry-run)
 python scripts/aruco_demo.py        # visual ArUco check -> output/aruco_demo.png
 python scripts/occupancy_demo.py    # visual occupancy grid -> output/occupancy_demo.png
+python scripts/dry_run_challenge1.py --fast   # full simulated mission (~1 min)
 ```
+
+**Dry-run** (`scripts/dry_run_challenge1.py`) fakes UWB navigation + down-facing
+camera, runs the same survey loop as the real drone, and writes:
+
+- `output/challenge1/landing_pad_report.json` (`simulated: true`)
+- `output/challenge1/arena_map.png`
+- `output/challenge1/occupancy_wpNN.png`
+- `output/challenge1/dry_run_preview_wpNN.png` (camera view with ArUco boxes)
 
 **Tier 2** (needs hardware) — bring-up checks on the real machines:
 

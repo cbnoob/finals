@@ -33,6 +33,11 @@ def get_uwb_position() -> Tuple[float, float, bool]:
     return (_current_n, _current_e, _ready)
 
 
+def set_simulated_position(n: float, e: float) -> None:
+    """Dry-run only: set UWB position without ROS2."""
+    _update_position(n, e)
+
+
 def start_uwb_thread(topic: str = "uwb_tag"):
     """Initialize ROS2 and start the UWB subscriber in a daemon thread."""
     global _uwb_node, _ros_thread
