@@ -11,13 +11,33 @@ Competition code for **Challenge 1** (mapping drone + ArUco landing pads) and **
 ```
 config/challenge.yaml      # IDs, waypoints, gains — edit before competition
 common/                    # UWB ROS listener, velocity navigator
-detection/                 # ArUco+depth, RealSense, YOLO helper
+detection/                 # ArUco+depth, RealSense, occupancy grid, RKNN/YOLO
 challenge1_mapping/        # Mapping mission → landing_pad_report.json
 challenge2_swarm/          # Swarm FSM + snapshots
+reference/organizer_samples/  # Unmodified organizer sample codes (RealSense, RKNN)
 run_challenge1.py
 run_challenge2.py
-scripts/train_yolo.py
+scripts/train_yolo.py      # Train detector on laptop
+scripts/aruco_demo.py      # Visual ArUco check (no hardware)
+scripts/occupancy_demo.py  # Visual occupancy grid check (no hardware)
 ```
+
+## Detection backends
+
+Two different machines run two different detectors — keep them straight:
+
+| | Mapping drone (Challenge 1) | Swarm C2 (Challenge 2) |
+|---|---|---|
+| Hardware | Rockchip NPU | Windows/Ubuntu laptop |
+| Detector | `detection/rknn_detector.py` (`rknnlite` + `rknn_decoder.py`) | `detection/target_detector.py` (`ultralytics`) |
+| Fiducials | `detection/aruco_depth.py` (ArUco/QR/AprilTag, no training) | — |
+| 3D position | `rs.rs2_deproject_pixel_to_point` (distortion-aware) | no depth on HULA |
+| Mapping | `detection/occupancy_grid.py` (top-down grid) | — |
+
+`detection/rknn_decoder.py` is the **YOLOv11** decoder (applies sigmoid to class
+scores — required for RKNN exports). The organizer's single-image
+`testrknn_with_display.py` is **YOLOv8** style (no sigmoid); match the decoder to
+whatever model you export. Originals kept in `reference/organizer_samples/`.
 
 ## Before competition day
 
@@ -76,8 +96,9 @@ Two tiers. **Tier 1** runs on any laptop (no drone/camera/ROS2):
 
 ```bash
 pip install opencv-contrib-python numpy PyYAML pytest
-python -m pytest tests/ -v          # 19 unit tests: ArUco, depth math, Dola, nav P-controller, config
-python scripts/aruco_demo.py        # visual check -> output/aruco_demo.png
+python -m pytest tests/ -v          # 28 unit tests: ArUco, depth, Dola, nav, RKNN decoder, occupancy grid, config
+python scripts/aruco_demo.py        # visual ArUco check -> output/aruco_demo.png
+python scripts/occupancy_demo.py    # visual occupancy grid -> output/occupancy_demo.png
 ```
 
 **Tier 2** (needs hardware) — bring-up checks on the real machines:
