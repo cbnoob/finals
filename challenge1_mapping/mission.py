@@ -62,7 +62,11 @@ async def run_mission(config_path: str | None = None) -> None:
         height_ready=lambda: state["height_ready"],
     )
 
-    rs = RealSenseCapture()
+    rs = RealSenseCapture(
+        width=int(m.get("camera_width", 640)),
+        height=int(m.get("camera_height", 480)),
+        fps=int(m.get("camera_fps", 30)),
+    )
     aruco = ArucoDepthDetector(
         fx=rs.intrinsics.fx,
         fy=rs.intrinsics.fy,
@@ -71,6 +75,7 @@ async def run_mission(config_path: str | None = None) -> None:
         dictionary_name=m.get("aruco_dictionary", "DICT_6X6_250"),
         valid_ids=m.get("valid_marker_ids", []),
         invalid_ids=m.get("invalid_marker_ids", []),
+        marker_size_m=m.get("marker_size_m"),
     )
 
     arena = ArenaMap(ArenaMapConfig())

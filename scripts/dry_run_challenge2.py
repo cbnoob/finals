@@ -21,7 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from challenge2_swarm.sim.fake_swarm import build_fake_swarm
+from challenge2_swarm.sim.ground_robots import default_convoy
 from challenge2_swarm.swarm_core import DroneContext, load_landing_zones, run_swarm_loop
+from challenge2_swarm.target_sensor import SimTargetSensor
 from common.config_loader import load_config
 from common.uwb_c2 import SimulatedUWBC2
 
@@ -70,33 +72,55 @@ def run_dry_swarm(config_path: str | None = None, fast: bool = False) -> None:
             ip=ip, api=api, tag_id=api.tag_id, stream=api.create_video_stream()
         )
 
+    # Sim runs on a compact 1x1 m arena with a tight footprint so it stays fast,
+    # independent of the real (meters-scale) arena/camera values in the config.
+    cfg = dict(cfg)
+    cfg["swarm"] = dict(swarm_cfg)
+    cfg["swarm"]["search_area"] = {"n_min": 0.0, "n_max": 1.0, "e_min": 0.0, "e_max": 1.0}
+    cfg["swarm"]["search_spacing_m"] = 0.3
+    cfg["swarm"]["use_map_bounds"] = False  # sim uses its own 1x1 m arena
+    swarm_cfg = cfg["swarm"]
     if fast:
-        cfg = dict(cfg)
-        cfg["swarm"] = dict(swarm_cfg)
         cfg["swarm"]["takeoff_wait_s"] = 0.2
-        cfg["swarm"]["search_timeout_s"] = 1.0
-        cfg["swarm"]["uwb_nav_timeout_s"] = 60
-        cfg["swarm"]["landing_threshold_m"] = 0.08
-        cfg["swarm"]["move_speed"] = 0.8
+        cfg["swarm"]["uwb_nav_timeout_s"] = 40
+        cfg["swarm"]["move_speed"] = 1.0
+        cfg["swarm"]["return_after_search"] = False
+
+    # Simulated convoy of ground robots + proximity sensor
+    robots = default_convoy()
+    sensor = SimTargetSensor(
+        uwb, robots,
+        camera_footprint_m=float(cfg["swarm"].get("sim_camera_footprint_m", 0.35)),
+    )
+
+    def _step_robots(_contexts) -> None:
+        for r in robots:
+            r.step(0.02)
 
     OUTPUT_LOG.parent.mkdir(parents=True, exist_ok=True)
-    print("=== Challenge 2 DRY RUN (simulated UWB + fake HULAs) ===")
+    print("=== Challenge 2 DRY RUN (simulated UWB + fake HULAs + convoy) ===")
+    print(f"Convoy: {len(robots)} ground robots to find")
     try:
-        run_swarm_loop(contexts, uwb, cfg, simulated=True)
+        run_swarm_loop(contexts, uwb, cfg, sensor, simulated=True, on_tick=_step_robots)
     finally:
         uwb.stop()
 
+    all_found: set = set()
     lines = []
     for ip, ctx in contexts.items():
         n, e, ok = uwb.get_tag_ne(ctx.tag_id)
+        all_found |= ctx.found_target_ids
         lines.append(
             f"{ip} tag={ctx.tag_id} state={ctx.state.name} "
-            f"final N={n:.2f} E={e:.2f} target N={ctx.target_n:.2f} E={ctx.target_e:.2f}"
+            f"final N={n:.2f} E={e:.2f} snapshots={ctx.snapshots_taken} "
+            f"robots_found={sorted(ctx.found_target_ids)}"
         )
-    OUTPUT_LOG.write_text("\n".join(lines), encoding="utf-8")
+    summary = f"Total unique robots found: {len(all_found)}/{len(robots)} -> {sorted(all_found)}"
+    OUTPUT_LOG.write_text("\n".join(lines) + "\n" + summary, encoding="utf-8")
     print(f"\nDry run log: {OUTPUT_LOG}")
     for line in lines:
         print(f"  {line}")
+    print(f"  {summary}")
 
 
 def main() -> None:

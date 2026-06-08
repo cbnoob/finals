@@ -15,8 +15,10 @@ import sys
 
 from challenge2_swarm.dola import Dola
 from challenge2_swarm.swarm_core import DroneContext, run_swarm_loop
+from challenge2_swarm.target_sensor import YoloTargetSensor
 from common.config_loader import load_config
 from common.uwb_c2 import UWBParserThreadC2
+from detection.target_detector import TargetDetector
 
 try:
     from pyhulax import DroneAPI
@@ -79,8 +81,11 @@ def run_swarm_mission(config_path: str | None = None) -> None:
         uwb.stop()
         return
 
+    detector = TargetDetector(swarm_cfg.get("yolo_weights"))
+    sensor = YoloTargetSensor(detector, conf=float(swarm_cfg.get("detection_conf", 0.4)))
+
     try:
-        run_swarm_loop(contexts, uwb, cfg, simulated=False)
+        run_swarm_loop(contexts, uwb, cfg, sensor, simulated=False)
     finally:
         uwb.stop()
 

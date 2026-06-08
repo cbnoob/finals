@@ -66,6 +66,21 @@ def test_skips_zero_depth():
     assert det.detect(img, depth) == []
 
 
+def test_pose_fallback_recovers_marker_without_depth():
+    # 200 px marker, fx=600, 0.2 m marker -> z = 600 * 0.2 / 200 = 0.6 m
+    img = _make_scene(marker_id=7, marker_px=200)
+    depth = np.zeros(img.shape[:2], dtype=np.uint16)  # depth hole everywhere
+    det = ArucoDepthDetector(
+        fx=600, fy=600, cx=240, cy=240, valid_ids=[7], marker_size_m=0.20
+    )
+    obs = det.detect(img, depth)
+    assert len(obs) == 1
+    assert obs[0].pose_used is True
+    assert abs(obs[0].z_m - 0.6) < 0.05
+    assert abs(obs[0].x_m) < 0.05
+    assert abs(obs[0].y_m) < 0.05
+
+
 def test_no_marker_returns_empty():
     blank = np.full((480, 480, 3), 255, dtype=np.uint8)
     depth = np.full((480, 480), 1500, dtype=np.uint16)

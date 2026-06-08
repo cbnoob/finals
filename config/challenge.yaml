@@ -2,9 +2,16 @@
 
 mapping_drone:
   serial_address: "serial:///dev/ttyS6:921600"
-  takeoff_height_m: 0.8
+  # MINIMUM legal flight height is 3.5 m — survey altitude must stay >= this.
+  takeoff_height_m: 3.7
   # UWB ROS2 topic (from organizer stack)
   uwb_topic: "uwb_tag"
+  # Down-facing RealSense (D430 or D450). Resolution is configurable on the unit;
+  # use a high resolution because targets are ~3.5 m away and occupy few pixels.
+  camera_model: "D430"        # D430 | D450 (sets field-of-view for footprint math)
+  camera_width: 1280
+  camera_height: 720
+  camera_fps: 30
   # Camera intrinsics: leave null to read from RealSense at runtime
   fx: null
   fy: null
@@ -12,6 +19,8 @@ mapping_drone:
   cy: null
   # ArUco dictionary must match printed markers (confirm with organizers)
   aruco_dictionary: "DICT_6X6_250"
+  # Printed marker is 20 cm x 20 cm — enables pose fallback when depth has holes.
+  marker_size_m: 0.20
   # Marker IDs that mean "valid landing pad" — fill after recon / organizer brief
   valid_marker_ids: [0, 1, 2, 3, 4, 5]
   invalid_marker_ids: [10, 11, 12, 13, 14, 15]
@@ -43,13 +52,26 @@ swarm:
   uwb_serial_port: null   # null = auto-detect USB COM port
   uwb_baud_rate: 921600
   uwb_nav_timeout_s: 120
-  landing_threshold_m: 0.05   # how close UWB must be to zone before search phase
+  waypoint_threshold_m: 0.12  # how close UWB must be to count a waypoint reached
   min_move_speed: 0.05        # floor so P-controller never stalls above threshold
-  search_timeout_s: 15
   # Per-drone state machine timings (seconds)
   takeoff_wait_s: 5
-  move_duration_s: 2.0
   move_speed: 0.5
+  # --- SEARCH phase: find + snapshot the ground-robot convoy (primary goal) ---
+  # Down-facing RealSense D430/D450 at >=3.5 m (same as mapping drone).
+  camera_model: "D430"
+  # Use the bounds the mapping drone surveyed (from its map) when available.
+  use_map_bounds: true
+  # Fallback arena bounds in UWB N/E if no Challenge 1 map is present — MEASURE.
+  search_area: { n_min: 0.0, n_max: 10.0, e_min: 0.0, e_max: 10.0 }
+  # Leg spacing from common/camera_model.recommended_leg_spacing at 3.5 m:
+  #   D430 ~2.1 m, D450 ~3.6 m. Tighten if you fly higher or want more overlap.
+  search_spacing_m: 2.0
+  detection_conf: 0.4         # YOLO confidence threshold
+  snapshot_cooldown_s: 1.0    # min time between snapshots (real, no target id)
+  target_dedup_m: 0.25        # don't re-snapshot same robot within this distance
+  return_after_search: true   # fly back to landing zone when coverage done
+  sim_camera_footprint_m: 0.35  # dry-run: "see" robots within this radius
   # YOLO weights path on C2 (train separately)
   yolo_weights: "models/robomaster_best.pt"
   snapshot_dir: "output/snapshots"

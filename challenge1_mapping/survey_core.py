@@ -83,6 +83,12 @@ def save_mission_report(
     report = {
         "challenge": 1,
         "simulated": simulated,
+        "arena_bounds": {
+            "n_min": arena.cfg.n_min,
+            "n_max": arena.cfg.n_max,
+            "e_min": arena.cfg.e_min,
+            "e_max": arena.cfg.e_max,
+        },
         "observations": observations,
         "valid_landing_ids": sorted({p.marker_id for p in arena.pads if p.valid}),
         "valid_landing_zones": valid_pads,

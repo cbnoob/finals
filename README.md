@@ -22,6 +22,42 @@ scripts/aruco_demo.py      # Visual ArUco check (no hardware)
 scripts/occupancy_demo.py  # Visual occupancy grid check (no hardware)
 ```
 
+## Mission handoff: mapping drone → swarm
+
+The mapping drone (Challenge 1) produces the map; the swarm (Challenge 2) consumes it.
+`output/challenge1/landing_pad_report.json` carries:
+- `valid_landing_zones` — world N/E of valid pads → swarm flies to / lands on these.
+- `arena_bounds` — the surveyed N/E extent → swarm's lawnmower search covers exactly
+  this area (`swarm.use_map_bounds: true`). Falls back to `swarm.search_area` if no map.
+
+Markers are **20 cm × 20 cm**. With the size known, the ArUco detector falls back to
+**pose estimation (`solvePnP`)** when depth has holes — common on flat markers at 3.5 m —
+instead of dropping the detection. At 3.5 m a 20 cm marker is only ~50 px wide (1280 px,
+D430), so keep resolution high and verify detection in the arena.
+
+## Cameras & flight height (confirmed)
+
+- **Mounting:** down-facing (matches organizer `generateTopDown.py`).
+- **Model:** Intel RealSense **D430 or D450**; **resolution is configurable** — set it
+  high (config `camera_width/height`, default 1280×720) since targets are far at altitude.
+- **Minimum flight height: 3.5 m** — survey/search altitude must stay at or above this
+  (`mapping_drone.takeoff_height_m` is 3.7 m).
+
+Footprint = how much ground one frame covers, from `common/camera_model.py`. At 3.5 m:
+
+| Module | Color footprint | Depth footprint | Lawnmower leg spacing | Ground res @1280px |
+|---|---|---|---|---|
+| D430 | 4.8 × 2.7 m | 6.6 × 3.9 m | ~2.1 m | ~3.8 mm/px |
+| D450 | 7.0 × 4.5 m | 6.6 × 3.9 m | ~3.6 m | ~5.5 mm/px |
+
+Consequences baked into the code/config:
+- **Search legs are meters apart, not centimeters** — set `swarm.search_spacing_m` from the
+  table (e.g. ~2 m for D430), *not* the dry-run placeholder value.
+- **Small objects = few pixels.** A 0.2 m marker at 3.5 m is only ~50 px wide at 1280 — use
+  high resolution and large ArUco markers, and verify YOLO still fires at that scale.
+- A down-facing camera sees the floor at ~3.5 m everywhere; obstacle extraction from the
+  occupancy grid needs a height threshold below the floor plane.
+
 ## Detection backends
 
 Two different machines run two different detectors — keep them straight:
@@ -85,22 +121,38 @@ python run_challenge2.py
 
 1. `Dola` discovers drone IPs
 2. Connects 3 drones, starts video streams
-3. Per-drone **state machine**: takeoff → move → search → snapshot on detection
-4. Reads up to 3 valid landing zones from Challenge 1 report (if present)
+3. Per-drone **state machine**: `TAKEOFF → GO_TO_REGION → SEARCH → SNAPSHOT → RETURN → DONE`
+4. **Primary goal = find the ground-robot convoy and snapshot each robot** (see below)
+
+**SEARCH — coverage + multi-target (the scoring objective):**
+- The arena (`swarm.search_area`) is split into one **vertical strip per drone** so they don't overlap.
+- Each drone flies a **lawnmower (boustrophedon) path** (`challenge2_swarm/search_pattern.py`) so its
+  camera passes over every cell of its strip.
+- On **every tick** it runs the detector (`challenge2_swarm/target_sensor.py`). When a *new* robot is
+  seen it transitions to `SNAPSHOT`, saves an annotated image to `output/snapshots/`, then **resumes
+  searching** — so one drone can find several robots.
+- Robots already photographed are de-duplicated (`target_dedup_m` / `snapshot_cooldown_s`).
+- When a drone's strip is fully covered it `RETURN`s to its landing zone.
+
+The detector is swappable behind one interface: `YoloTargetSensor` (real YOLO on the HULA camera)
+vs `SimTargetSensor` (dry-run convoy). The state machine is identical for both.
 
 **SDK docs:** https://pyhulax.xenops.ae
 
 **UWB on C2** (organizer `UWBParserThread.py` → `common/uwb_c2.py`):
 - USB serial parser gives each drone tag's `(N, E)` position
-- `MOVE_TO_ZONE` uses the same P-controller as the mapping drone, mapped to `pyhulax` `move(Direction, speed)`
-- Reads landing targets from Challenge 1 `valid_landing_zones`
+- Navigation uses the same P-controller as the mapping drone, mapped to `pyhulax` `move(Direction, speed)`
+- Reads ambush/landing targets from Challenge 1 `valid_landing_zones`
 - **Not** pyhulax built-in auto-land — optional ArUco near pads is separate visual aid
 
 **Laptop dry-run:**
 ```bash
 python scripts/dry_run_challenge1.py --fast   # produces landing_pad_report.json
-python scripts/dry_run_challenge2.py --fast # 3 fake HULAs fly to those zones via sim UWB
+python scripts/dry_run_challenge2.py --fast # 3 fake HULAs lawnmower-search a 5-robot convoy
 ```
+
+The Challenge 2 dry-run spawns a simulated convoy (`challenge2_swarm/sim/ground_robots.py`) and
+reports how many of the 5 robots the swarm collectively found, with snapshots in `output/snapshots/`.
 
 ## Practice: object detection
 
