@@ -1,5 +1,12 @@
 # RoboVerse University team — tune for arena day
 
+# UWB anchor coverage — MEASURE in the arena on competition day.
+# Flight is blocked/restricted outside this region (bad UWB -> erratic flight).
+arena:
+  geofence_enabled: true
+  safety_margin_m: 0.5   # inset from edges for waypoints/search targets
+  uwb_bounds: { n_min: -5.0, n_max: 5.0, e_min: -5.0, e_max: 5.0 }
+
 mapping_drone:
   serial_address: "serial:///dev/ttyS6:921600"
   # MINIMUM legal flight height is 3.5 m — survey altitude must stay >= this.
@@ -24,7 +31,11 @@ mapping_drone:
   # Marker IDs that mean "valid landing pad" — fill after recon / organizer brief
   valid_marker_ids: [0, 1, 2, 3, 4, 5]
   invalid_marker_ids: [10, 11, 12, 13, 14, 15]
-  # Exploration waypoints in UWB N/E (meters). Add grid from mapping plan.
+  # Auto full-area survey: generate a lawnmower grid covering the whole anchor
+  # safe-zone (uwb_bounds inset by safety_margin_m) so the drone maps everything.
+  auto_survey: true
+  survey_spacing_m: 2.0   # leg spacing; ~camera footprint width at 3.5 m (D430 ~4.8 m)
+  # Fallback manual waypoints (used when auto_survey is false), UWB N/E meters.
   survey_waypoints:
     - { n: 0.0, e: 0.0 }
     - { n: 1.0, e: 0.0 }
@@ -70,7 +81,7 @@ swarm:
   detection_conf: 0.4         # YOLO confidence threshold
   snapshot_cooldown_s: 1.0    # min time between snapshots (real, no target id)
   target_dedup_m: 0.25        # don't re-snapshot same robot within this distance
-  return_after_search: true   # fly back to landing zone when coverage done
+  do_area_search: true        # lawnmower-search the strip before going to the pad
   sim_camera_footprint_m: 0.35  # dry-run: "see" robots within this radius
   # YOLO weights path on C2 (train separately)
   yolo_weights: "models/robomaster_best.pt"

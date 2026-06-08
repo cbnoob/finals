@@ -22,6 +22,19 @@ scripts/aruco_demo.py      # Visual ArUco check (no hardware)
 scripts/occupancy_demo.py  # Visual occupancy grid check (no hardware)
 ```
 
+## UWB geofence (stay inside anchor coverage)
+
+UWB position degrades outside the anchor zone and causes erratic velocity-control
+flight. `common/geofence.py` enforces:
+
+- **Preflight:** reject waypoints/search targets outside the safe zone (anchor bounds
+  minus `arena.safety_margin_m`)
+- **In flight:** every nav tick checks live UWB; if outside anchors → zero velocity /
+  hover and abort (mapping) or halt that drone (swarm)
+
+Set `arena.uwb_bounds` in `config/challenge.yaml` to the measured anchor coverage
+on competition day.
+
 ## Mission handoff: mapping drone → swarm
 
 The mapping drone (Challenge 1) produces the map; the swarm (Challenge 2) consumes it.
@@ -79,7 +92,10 @@ whatever model you export. Originals kept in `reference/organizer_samples/`.
 
 1. **Confirm ArUco dictionary** with organizers (`DICT_6X6_250` in config).
 2. Fill **`valid_marker_ids`** / **`invalid_marker_ids`** in `config/challenge.yaml`.
-3. Set **`survey_waypoints`** to cover all landing pads in UWB N/E coordinates (measure in arena).
+3. Measure the **`arena.uwb_bounds`** (anchor coverage). With `mapping_drone.auto_survey: true`
+   the drone auto-generates a full-area lawnmower survey over the safe-zone — tune
+   `survey_spacing_m` to the camera footprint. (Set `auto_survey: false` to use manual
+   `survey_waypoints` instead.)
 4. Train YOLO on RoboMaster targets → save to `models/robomaster_best.pt`.
 5. Copy this repo to **C2 Terminal** (Ubuntu VM for mapping drone; Windows for swarm).
 
@@ -97,10 +113,12 @@ python3 run_challenge1.py
 **What it does** (stitched from the organizer samples):
 
 1. Subscribes to UWB (`uwb_tag` topic) — *kolomee.py*
-2. Arms, starts offboard, flies survey waypoints using **velocity control** (not position goto) — *kolomee.py*
-3. Hovers at each point, grabs aligned RealSense color+depth — *getSyncDepthColor.py*
-4. Builds a **top-down occupancy grid** per waypoint — *generateTopDown.py*
-5. Detects ArUco, classifies valid/invalid, converts each pad to **world N/E** coordinates — *ArUco sample*
+2. Arms, starts offboard, climbs to `takeoff_height_m` (≥ 3.5 m)
+3. Flies a **full-area lawnmower survey** (auto-generated over the anchor safe-zone) using
+   **velocity control** (not position goto) — *kolomee.py*
+4. Hovers at each point, grabs aligned RealSense color+depth — *getSyncDepthColor.py*
+5. Builds a **top-down occupancy grid** per waypoint — *generateTopDown.py*
+6. Detects ArUco, classifies valid/invalid, converts each pad to **world N/E** coordinates — *ArUco sample*
 
 **Outputs** in `output/challenge1/`:
 - `landing_pad_report.json` — observations + `valid_landing_zones` (world N/E) for Challenge 2
@@ -121,21 +139,24 @@ python run_challenge2.py
 
 1. `Dola` discovers drone IPs
 2. Connects 3 drones, starts video streams
-3. Per-drone **state machine**: `TAKEOFF → GO_TO_REGION → SEARCH → SNAPSHOT → RETURN → DONE`
-4. **Primary goal = find the ground-robot convoy and snapshot each robot** (see below)
+3. Each drone gets a distinct valid landing pad from the Challenge 1 report
+4. Per-drone **state machine**: `TAKEOFF → SEARCH → GO_TO_ZONE → LAND → DONE`
+   (`SNAPSHOT` is entered from any moving state and resumes it)
 
-**SEARCH — coverage + multi-target (the scoring objective):**
-- The arena (`swarm.search_area`) is split into one **vertical strip per drone** so they don't overlap.
-- Each drone flies a **lawnmower (boustrophedon) path** (`challenge2_swarm/search_pattern.py`) so its
-  camera passes over every cell of its strip.
-- On **every tick** it runs the detector (`challenge2_swarm/target_sensor.py`). When a *new* robot is
-  seen it transitions to `SNAPSHOT`, saves an annotated image to `output/snapshots/`, then **resumes
-  searching** — so one drone can find several robots.
-- Robots already photographed are de-duplicated (`target_dedup_m` / `snapshot_cooldown_s`).
-- When a drone's strip is fully covered it `RETURN`s to its landing zone.
+**Two scoring goals, one flow:**
+- **Recon — find + snapshot the convoy.** In `SEARCH` each drone flies a **lawnmower
+  (boustrophedon) path** over its strip (`challenge2_swarm/search_pattern.py`), running the
+  detector (`challenge2_swarm/target_sensor.py`) every tick. A *new* robot → `SNAPSHOT` (annotated
+  image to `output/snapshots/`) → resume. Robots are de-duplicated (`target_dedup_m` /
+  `snapshot_cooldown_s`). Detection also runs in `GO_TO_ZONE`, so robots seen **while flying to the
+  pad** are snapshotted too.
+- **Deployment — occupy the pads.** After searching its strip, the drone flies to its assigned
+  landing zone (`GO_TO_ZONE`) and **lands on it** (`LAND` → `api.land()`), so all valid pads end up
+  occupied. Set `swarm.do_area_search: false` to skip the search and go straight to the pad.
 
-The detector is swappable behind one interface: `YoloTargetSensor` (real YOLO on the HULA camera)
-vs `SimTargetSensor` (dry-run convoy). The state machine is identical for both.
+The arena is split into one **vertical strip per drone** so coverage doesn't overlap. The detector
+is swappable behind one interface: `YoloTargetSensor` (real YOLO) vs `SimTargetSensor` (dry-run
+convoy); the state machine is identical for both.
 
 **SDK docs:** https://pyhulax.xenops.ae
 

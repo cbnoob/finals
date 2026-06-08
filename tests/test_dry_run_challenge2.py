@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.dry_run_challenge2 import run_dry_swarm
 
 
-def test_dry_run_swarm_finds_convoy():
+def test_dry_run_swarm_finds_convoy_and_lands():
     run_dry_swarm(fast=True)
     log = ROOT / "output" / "challenge2" / "dry_run_log.txt"
     assert log.exists()
@@ -17,3 +17,6 @@ def test_dry_run_swarm_finds_convoy():
     assert "state=DONE" in text
     # The swarm should collectively find all 5 ground robots via coverage search
     assert "Total unique robots found: 5/5" in text
+    # ...and every drone should occupy its assigned landing pad
+    assert "Landing pads occupied: 3/3" in text
+    assert "landed=True" in text

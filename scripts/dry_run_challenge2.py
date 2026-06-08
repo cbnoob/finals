@@ -84,7 +84,6 @@ def run_dry_swarm(config_path: str | None = None, fast: bool = False) -> None:
         cfg["swarm"]["takeoff_wait_s"] = 0.2
         cfg["swarm"]["uwb_nav_timeout_s"] = 40
         cfg["swarm"]["move_speed"] = 1.0
-        cfg["swarm"]["return_after_search"] = False
 
     # Simulated convoy of ground robots + proximity sensor
     robots = default_convoy()
@@ -106,16 +105,21 @@ def run_dry_swarm(config_path: str | None = None, fast: bool = False) -> None:
         uwb.stop()
 
     all_found: set = set()
+    landed = 0
     lines = []
     for ip, ctx in contexts.items():
         n, e, ok = uwb.get_tag_ne(ctx.tag_id)
         all_found |= ctx.found_target_ids
+        landed += 1 if ctx.landed else 0
         lines.append(
-            f"{ip} tag={ctx.tag_id} state={ctx.state.name} "
-            f"final N={n:.2f} E={e:.2f} snapshots={ctx.snapshots_taken} "
-            f"robots_found={sorted(ctx.found_target_ids)}"
+            f"{ip} tag={ctx.tag_id} state={ctx.state.name} landed={ctx.landed} "
+            f"final N={n:.2f} E={e:.2f} zone N={ctx.target_n:.2f} E={ctx.target_e:.2f} "
+            f"snapshots={ctx.snapshots_taken} robots_found={sorted(ctx.found_target_ids)}"
         )
-    summary = f"Total unique robots found: {len(all_found)}/{len(robots)} -> {sorted(all_found)}"
+    summary = (
+        f"Total unique robots found: {len(all_found)}/{len(robots)} -> {sorted(all_found)}\n"
+        f"Landing pads occupied: {landed}/{len(contexts)}"
+    )
     OUTPUT_LOG.write_text("\n".join(lines) + "\n" + summary, encoding="utf-8")
     print(f"\nDry run log: {OUTPUT_LOG}")
     for line in lines:

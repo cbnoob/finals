@@ -17,8 +17,13 @@ import sys
 from pathlib import Path
 
 from challenge1_mapping.arena_map import ArenaMap, ArenaMapConfig
-from challenge1_mapping.survey_core import process_waypoint, save_mission_report
+from challenge1_mapping.survey_core import (
+    build_survey_waypoints,
+    process_waypoint,
+    save_mission_report,
+)
 from common.config_loader import load_config
+from common.geofence import ArenaBounds, GeofenceViolation
 from common.uwb_listener import (
     get_uwb_position,
     shutdown_uwb,
@@ -53,6 +58,7 @@ async def run_mission(config_path: str | None = None) -> None:
             print("Local position estimate OK")
             break
 
+    geofence = ArenaBounds.from_config(cfg)
     gains = NavGains(**{k: nav_cfg[k] for k in NavGains.__dataclass_fields__})
     navigator = VelocityNavigator(
         drone,
@@ -60,6 +66,7 @@ async def run_mission(config_path: str | None = None) -> None:
         get_height=lambda: state["down_m"],
         get_yaw=lambda: state["yaw"],
         height_ready=lambda: state["height_ready"],
+        geofence=geofence,
     )
 
     rs = RealSenseCapture(
@@ -78,7 +85,15 @@ async def run_mission(config_path: str | None = None) -> None:
         marker_size_m=m.get("marker_size_m"),
     )
 
-    arena = ArenaMap(ArenaMapConfig())
+    bounds_raw = cfg.get("arena", {}).get("uwb_bounds", {})
+    arena = ArenaMap(
+        ArenaMapConfig(
+            n_min=float(bounds_raw.get("n_min", -5.0)),
+            n_max=float(bounds_raw.get("n_max", 5.0)),
+            e_min=float(bounds_raw.get("e_min", -5.0)),
+            e_max=float(bounds_raw.get("e_max", 5.0)),
+        )
+    )
     grid_cfg = GridConfig()
     observations: list[dict] = []
     takeoff_d = -float(m["takeoff_height_m"])
@@ -89,6 +104,19 @@ async def run_mission(config_path: str | None = None) -> None:
         navigator.takeoff_yaw = state["yaw"]
         print(f"Home UWB N={home_n:.2f} E={home_e:.2f}, yaw={navigator.takeoff_yaw:.1f}")
         print(f"Battery: {state['battery']:.0f}%")
+
+        waypoints = build_survey_waypoints(cfg)
+        print(f"Survey plan: {len(waypoints)} waypoints "
+              f"({'auto full-area' if m.get('auto_survey') else 'manual'})")
+        if geofence is not None:
+            geofence.check_position(home_n, home_e)
+            geofence.validate_waypoints(waypoints)
+            print(
+                f"Geofence OK — UWB anchors "
+                f"N=[{geofence.n_min:.1f},{geofence.n_max:.1f}] "
+                f"E=[{geofence.e_min:.1f},{geofence.e_max:.1f}] "
+                f"(margin {geofence.safety_margin_m:.1f} m)"
+            )
 
         await drone.action.set_takeoff_altitude(float(m["takeoff_height_m"]))
         await asyncio.sleep(1.0)
@@ -104,7 +132,6 @@ async def run_mission(config_path: str | None = None) -> None:
         await navigator.start_offboard()
         await navigator.fly_to(home_n, home_e, takeoff_d, ignore_height=False)
 
-        waypoints = m.get("survey_waypoints", [])
         hover_s = float(m.get("hover_at_waypoint_s", 2.0))
 
         for i, wp in enumerate(waypoints):
@@ -131,6 +158,18 @@ async def run_mission(config_path: str | None = None) -> None:
         except Exception:
             pass
 
+    except GeofenceViolation as exc:
+        print(f"GEOFENCE: {exc}")
+        try:
+            await navigator.send_velocity(0.0, 0.0, 0.0)
+            await drone.offboard.stop()
+        except Exception:
+            pass
+        try:
+            await drone.action.land()
+        except Exception:
+            pass
+        raise
     except Exception as exc:
         print(f"Mission error: {exc}")
         try:

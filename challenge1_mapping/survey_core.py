@@ -10,9 +10,39 @@ from pathlib import Path
 import cv2
 
 from challenge1_mapping.arena_map import ArenaMap, marker_world_position
+from challenge2_swarm.search_pattern import Region, lawnmower_waypoints
 from detection.aruco_depth import ArucoDepthDetector
 from detection.occupancy_grid import GridConfig, build_occupancy_grid
 from detection.realsense_capture import FramePair
+
+
+def build_survey_waypoints(cfg: dict) -> list[dict]:
+    """Survey waypoints in UWB N/E.
+
+    If mapping_drone.auto_survey is true, generate a lawnmower grid that covers
+    the whole anchor safe-zone (uwb_bounds inset by safety_margin_m) so the drone
+    maps the entire arena. Otherwise use the manual survey_waypoints list.
+    """
+    m = cfg["mapping_drone"]
+    manual = [
+        {"n": float(w["n"]), "e": float(w["e"])}
+        for w in m.get("survey_waypoints", [])
+    ]
+    if not m.get("auto_survey", False):
+        return manual
+
+    arena = cfg.get("arena", {})
+    bounds = arena.get("uwb_bounds", {})
+    margin = float(arena.get("safety_margin_m", 0.5))
+    region = Region(
+        n_min=float(bounds.get("n_min", -5.0)) + margin,
+        n_max=float(bounds.get("n_max", 5.0)) - margin,
+        e_min=float(bounds.get("e_min", -5.0)) + margin,
+        e_max=float(bounds.get("e_max", 5.0)) - margin,
+    )
+    spacing = float(m.get("survey_spacing_m", 2.0))
+    pts = lawnmower_waypoints(region, spacing)
+    return [{"n": n, "e": e} for n, e in pts]
 
 
 def process_waypoint(

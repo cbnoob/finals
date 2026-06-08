@@ -30,8 +30,13 @@ sys.path.insert(0, str(ROOT))
 from challenge1_mapping.arena_map import ArenaMap, ArenaMapConfig
 from challenge1_mapping.sim.fake_navigator import FakeVelocityNavigator
 from challenge1_mapping.sim.fake_realsense import FakeRealSenseCapture
-from challenge1_mapping.survey_core import process_waypoint, save_mission_report
+from challenge1_mapping.survey_core import (
+    build_survey_waypoints,
+    process_waypoint,
+    save_mission_report,
+)
 from common.config_loader import load_config
+from common.geofence import ArenaBounds
 from common.uwb_listener import get_uwb_position, set_simulated_position
 from common.velocity_nav import NavGains
 from detection.aruco_depth import ArucoDepthDetector
@@ -45,11 +50,26 @@ async def run_dry_mission(config_path: str | None = None, fast: bool = False) ->
     m = cfg["mapping_drone"]
     nav_cfg = cfg["navigation"]
 
-    arena_cfg = ArenaMapConfig()
+    # The sim world is a compact 1x1 m arena with pads at the corners, so force
+    # the manual corner waypoints regardless of the real-arena auto_survey flag.
+    cfg = dict(cfg)
+    cfg["mapping_drone"] = dict(cfg["mapping_drone"])
+    cfg["mapping_drone"]["auto_survey"] = False
+
+    bounds_raw = cfg.get("arena", {}).get("uwb_bounds", {})
+    arena_cfg = ArenaMapConfig(
+        n_min=float(bounds_raw.get("n_min", -5.0)),
+        n_max=float(bounds_raw.get("n_max", 5.0)),
+        e_min=float(bounds_raw.get("e_min", -5.0)),
+        e_max=float(bounds_raw.get("e_max", 5.0)),
+    )
+    geofence = ArenaBounds.from_config(cfg)
     set_simulated_position(0.0, 0.0)
 
     gains = NavGains(**{k: nav_cfg[k] for k in NavGains.__dataclass_fields__})
-    navigator = FakeVelocityNavigator(gains, sim_dt=0.02 if fast else 0.05)
+    navigator = FakeVelocityNavigator(
+        gains, sim_dt=0.02 if fast else 0.05, geofence=geofence
+    )
 
     rs = FakeRealSenseCapture(arena_cfg=arena_cfg)
     aruco = ArucoDepthDetector(
@@ -73,11 +93,14 @@ async def run_dry_mission(config_path: str | None = None, fast: bool = False) ->
     print("=== Challenge 1 DRY RUN (simulated) ===")
     home_n, home_e, _ = get_uwb_position()
     print(f"Home UWB N={home_n:.2f} E={home_e:.2f}")
+    waypoints = build_survey_waypoints(cfg)
+    if geofence is not None:
+        geofence.check_position(home_n, home_e)
+        geofence.validate_waypoints(waypoints)
 
     await navigator.start_offboard()
     await navigator.fly_to(home_n, home_e, takeoff_d, ignore_height=False)
 
-    waypoints = m.get("survey_waypoints", [])
     for i, wp in enumerate(waypoints):
         tn, te = float(wp["n"]), float(wp["e"])
         print(f"--- Waypoint {i + 1}/{len(waypoints)} -> N={tn:.2f} E={te:.2f} ---")

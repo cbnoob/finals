@@ -1,10 +1,17 @@
 """Shared swarm state machine — real hardware and dry-run.
 
-Primary objective (Challenge 2): cover the arena, find the ground-robot convoy,
-and snapshot each robot. Flow per drone:
+Objectives (Challenge 2):
+  - find the ground-robot convoy and snapshot each robot (recon)
+  - occupy every valid landing pad from Challenge 1 (deployment)
 
-  TAKEOFF -> GO_TO_REGION -> SEARCH (lawnmower coverage + sensing)
-          -> SNAPSHOT (on new target) -> back to SEARCH -> RETURN -> DONE
+Flow per drone:
+
+  TAKEOFF
+    -> SEARCH       lawnmower coverage of its strip, snapshot robots it sees
+    -> GO_TO_ZONE   fly to its assigned landing pad, snapshot robots en route
+    -> LAND         precision-land on the pad
+    -> DONE
+  SNAPSHOT is entered from any moving state and resumes that state afterwards.
 """
 
 from __future__ import annotations
@@ -18,6 +25,7 @@ from pathlib import Path
 
 from challenge2_swarm.search_pattern import Region, lawnmower_waypoints, split_region
 from challenge2_swarm.uwb_nav import apply_nav_tick, uwb_nav_tick
+from common.geofence import ArenaBounds, GeofenceViolation
 from common.uwb_c2 import UWBSource
 from common.velocity_nav import NavGains
 
@@ -30,10 +38,10 @@ except ImportError:
 class DroneState(IntEnum):
     IDLE = 0
     TAKEOFF = 1
-    GO_TO_REGION = 2
-    SEARCH = 3
+    SEARCH = 2
+    GO_TO_ZONE = 3
     SNAPSHOT = 4
-    RETURN = 5
+    LAND = 5
     DONE = 6
 
 
@@ -48,6 +56,8 @@ class DroneContext:
     # landing zone (ambush position from Challenge 1)
     target_n: float = 0.0
     target_e: float = 0.0
+    has_zone: bool = False
+    landed: bool = False
     # search coverage
     search_waypoints: list[tuple[float, float]] = field(default_factory=list)
     search_idx: int = 0
@@ -56,6 +66,7 @@ class DroneContext:
     found_target_ids: set = field(default_factory=set)
     last_snapshot_t: float = 0.0
     _pending: list = field(default_factory=list)
+    resume_state: DroneState = DroneState.SEARCH
 
 
 def load_landing_zones(report_path: Path | None = None) -> list[dict]:
@@ -108,9 +119,29 @@ def _search_area(swarm_cfg: dict, use_map_bounds: bool = True) -> Region:
     )
 
 
+def _validate_swarm_geofence(
+    geofence: ArenaBounds | None,
+    contexts: dict[str, DroneContext],
+    landing_zones: list[dict],
+    search_area: Region,
+) -> None:
+    if geofence is None:
+        return
+    geofence.validate_region(
+        search_area.n_min, search_area.n_max, search_area.e_min, search_area.e_max, "search area"
+    )
+    points: list[tuple[float, float, str]] = []
+    for i, z in enumerate(landing_zones):
+        points.append((float(z["n"]), float(z["e"]), f"landing zone {i}"))
+    for ip, ctx in contexts.items():
+        for j, (wn, we) in enumerate(ctx.search_waypoints):
+            points.append((wn, we, f"{ip} search wp {j}"))
+    geofence.validate_ne_points(points)
+
+
 def assign_search_regions(
     contexts: dict[str, DroneContext], swarm_cfg: dict
-) -> None:
+) -> Region:
     """Split the search area into per-drone strips and build lawnmower paths."""
     area = _search_area(swarm_cfg, use_map_bounds=bool(swarm_cfg.get("use_map_bounds", True)))
     spacing = float(swarm_cfg.get("search_spacing_m", 0.3))
@@ -119,6 +150,7 @@ def assign_search_regions(
     for i, ip in enumerate(ips):
         region = split_region(area, num, i)
         contexts[ip].search_waypoints = lawnmower_waypoints(region, spacing)
+    return area
 
 
 def run_swarm_loop(
@@ -137,8 +169,14 @@ def run_swarm_loop(
     gains.n_threshold = arrive_th
     gains.e_threshold = arrive_th
 
+    geofence = ArenaBounds.from_config(cfg)
     landing_zones = load_landing_zones()
-    assign_search_regions(contexts, swarm_cfg)
+    search_area = assign_search_regions(contexts, swarm_cfg)
+    try:
+        _validate_swarm_geofence(geofence, contexts, landing_zones, search_area)
+    except GeofenceViolation as exc:
+        print(f"Geofence preflight failed: {exc}")
+        return
 
     ips = list(contexts.keys())
     for i, ip in enumerate(ips):
@@ -147,6 +185,10 @@ def run_swarm_loop(
         if i < len(landing_zones):
             ctx.target_n = float(landing_zones[i].get("n", 0))
             ctx.target_e = float(landing_zones[i].get("e", 0))
+            ctx.has_zone = True
+            print(f"{ip}: assigned landing zone N={ctx.target_n:.2f} E={ctx.target_e:.2f}")
+        else:
+            print(f"{ip}: no landing zone assigned (will land in place)")
 
     takeoff_wait = float(swarm_cfg.get("takeoff_wait_s", 5))
     move_speed = float(swarm_cfg.get("move_speed", 0.5))
@@ -154,7 +196,7 @@ def run_swarm_loop(
     min_move_speed = float(swarm_cfg.get("min_move_speed", 0.05))
     snapshot_cooldown = float(swarm_cfg.get("snapshot_cooldown_s", 1.0))
     dedup_dist = float(swarm_cfg.get("target_dedup_m", 0.25))
-    return_home = bool(swarm_cfg.get("return_after_search", True))
+    do_area_search = bool(swarm_cfg.get("do_area_search", True))
 
     snapshot_dir = Path(swarm_cfg.get("snapshot_dir", "output/snapshots"))
     snapshot_dir.mkdir(parents=True, exist_ok=True)
@@ -163,8 +205,15 @@ def run_swarm_loop(
     print(f"Swarm SEARCH mission ({mode}) — Ctrl+C to stop")
 
     def _nav_to(ctx, tn, te):
-        tick = uwb_nav_tick(uwb, ctx.tag_id, tn, te, gains, move_speed)
-        apply_nav_tick(ctx.api, tick, min_speed=min_move_speed)
+        tick = uwb_nav_tick(
+            uwb, ctx.tag_id, tn, te, gains, move_speed, geofence=geofence
+        )
+        if apply_nav_tick(ctx.api, tick, min_speed=min_move_speed):
+            print(
+                f"tag {ctx.tag_id}: GEOFENCE — outside UWB anchors at "
+                f"N={tick.current_n:.2f} E={tick.current_e:.2f}, halting"
+            )
+            _set_state(ctx, DroneState.DONE)
         return tick
 
     def _new_targets(ctx, sensed):
@@ -180,6 +229,20 @@ def run_swarm_loop(
             out.append(t)
         return out
 
+    def _detect_while_moving(ctx) -> bool:
+        """Snapshot any new robot the camera sees. Returns True if it switched
+        to SNAPSHOT (caller should stop moving this tick)."""
+        new = _new_targets(ctx, sensor.sense(ctx))
+        if new:
+            ctx._pending = new
+            ctx.resume_state = ctx.state
+            _set_state(ctx, DroneState.SNAPSHOT)
+            return True
+        return False
+
+    def _next_after_search(ctx) -> DroneState:
+        return DroneState.GO_TO_ZONE if ctx.has_zone else DroneState.LAND
+
     try:
         while any(c.state != DroneState.DONE for c in contexts.values()):
             for ip, ctx in contexts.items():
@@ -188,35 +251,32 @@ def run_swarm_loop(
                 if ctx.state == DroneState.TAKEOFF:
                     api.takeoff()
                     if _elapsed(ctx) >= (0.5 if simulated else takeoff_wait):
-                        _set_state(ctx, DroneState.GO_TO_REGION)
-
-                elif ctx.state == DroneState.GO_TO_REGION:
-                    if not ctx.search_waypoints:
-                        _set_state(ctx, DroneState.SEARCH)
-                        continue
-                    first_n, first_e = ctx.search_waypoints[0]
-                    tick = _nav_to(ctx, first_n, first_e)
-                    if tick.at_goal or _elapsed(ctx) > nav_timeout:
-                        ctx.search_idx = 0
-                        _set_state(ctx, DroneState.SEARCH)
+                        if do_area_search and ctx.search_waypoints:
+                            ctx.search_idx = 0
+                            _set_state(ctx, DroneState.SEARCH)
+                        else:
+                            _set_state(ctx, _next_after_search(ctx))
 
                 elif ctx.state == DroneState.SEARCH:
-                    # 1) sense every tick (primary goal)
-                    sensed = sensor.sense(ctx)
-                    new = _new_targets(ctx, sensed)
-                    if new:
-                        ctx._pending = new
-                        _set_state(ctx, DroneState.SNAPSHOT)
+                    # snapshot robots seen during coverage (recon goal)
+                    if _detect_while_moving(ctx):
                         continue
-
-                    # 2) advance along lawnmower coverage path
+                    # advance along lawnmower coverage path
                     if ctx.search_idx >= len(ctx.search_waypoints):
-                        _set_state(ctx, DroneState.RETURN if return_home else DroneState.DONE)
+                        _set_state(ctx, _next_after_search(ctx))
                         continue
                     wn, we = ctx.search_waypoints[ctx.search_idx]
                     tick = _nav_to(ctx, wn, we)
                     if tick.at_goal:
                         ctx.search_idx += 1
+
+                elif ctx.state == DroneState.GO_TO_ZONE:
+                    # snapshot robots seen while travelling toward the pad (step 7)
+                    if _detect_while_moving(ctx):
+                        continue
+                    tick = _nav_to(ctx, ctx.target_n, ctx.target_e)
+                    if tick.at_goal or _elapsed(ctx) > nav_timeout:
+                        _set_state(ctx, DroneState.LAND)
 
                 elif ctx.state == DroneState.SNAPSHOT:
                     api.hover()
@@ -230,14 +290,22 @@ def run_swarm_loop(
                     ids = [t.target_id for t in ctx._pending]
                     print(f"{ip}: SNAPSHOT {out.name} targets={ids} ({count} boxes)")
                     ctx._pending = []
-                    _set_state(ctx, DroneState.SEARCH)
+                    _set_state(ctx, ctx.resume_state)
 
-                elif ctx.state == DroneState.RETURN:
-                    tick = _nav_to(ctx, ctx.target_n, ctx.target_e)
-                    if tick.at_goal or _elapsed(ctx) > nav_timeout:
-                        api.hover()
-                        print(f"{ip}: returned to zone, found {len(ctx.found_target_ids)} robots")
-                        _set_state(ctx, DroneState.DONE)
+                elif ctx.state == DroneState.LAND:
+                    # precision-land on the assigned pad (step 8)
+                    api.land()
+                    ctx.landed = True
+                    where = (
+                        f"pad N={ctx.target_n:.2f} E={ctx.target_e:.2f}"
+                        if ctx.has_zone
+                        else "in place"
+                    )
+                    print(
+                        f"{ip}: LANDED {where} — "
+                        f"{len(ctx.found_target_ids)} robots found"
+                    )
+                    _set_state(ctx, DroneState.DONE)
 
             if on_tick is not None:
                 on_tick(contexts)
@@ -247,7 +315,8 @@ def run_swarm_loop(
         print("Stopped by user")
     finally:
         for ctx in contexts.values():
-            try:
-                ctx.api.land()
-            except Exception:
-                pass
+            if not ctx.landed:
+                try:
+                    ctx.api.land()
+                except Exception:
+                    pass

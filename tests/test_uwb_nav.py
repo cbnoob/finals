@@ -1,5 +1,6 @@
 """UWB navigation for swarm (C2)."""
 
+from common.geofence import ArenaBounds
 from common.uwb_c2 import SimulatedUWBC2, parser_xy_to_ne
 from common.velocity_nav import NavGains
 from challenge2_swarm.uwb_nav import uwb_nav_tick, velocity_to_direction
@@ -37,3 +38,10 @@ def test_uwb_nav_tick_moves_toward_target():
     assert tick.at_goal is False
     assert tick.direction is not None
     assert tick.speed > 0
+
+
+def test_uwb_nav_tick_geofence_violation():
+    uwb = SimulatedUWBC2({0: (20.0, 20.0)})
+    geofence = ArenaBounds(0.0, 10.0, 0.0, 10.0)
+    tick = uwb_nav_tick(uwb, 0, 5.0, 5.0, NavGains(), max_speed=0.5, geofence=geofence)
+    assert tick.geofence_violation is True

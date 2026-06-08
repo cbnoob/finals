@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from common.geofence import ArenaBounds
 from common.uwb_c2 import UWBSource
 from common.velocity_nav import NavGains, compute_nav_velocity
 
@@ -32,6 +33,7 @@ class NavTickResult:
     current_e: float
     direction: object | None = None
     speed: float = 0.0
+    geofence_violation: bool = False
 
 
 def velocity_to_direction(vn: float, ve: float, max_speed: float):
@@ -53,10 +55,20 @@ def uwb_nav_tick(
     target_e: float,
     gains: NavGains,
     max_speed: float,
+    geofence: ArenaBounds | None = None,
 ) -> NavTickResult:
     n, e, ready = uwb.get_tag_ne(tag_id)
     if not ready:
         return NavTickResult(at_goal=False, ready=False, current_n=n, current_e=e)
+
+    if geofence is not None and not geofence.in_anchor_zone(n, e):
+        return NavTickResult(
+            at_goal=False,
+            ready=True,
+            current_n=n,
+            current_e=e,
+            geofence_violation=True,
+        )
 
     vn, ve, _, at_goal = compute_nav_velocity(
         target_n - n, target_e - e, 0.0, gains, ignore_height=True
@@ -75,15 +87,20 @@ def uwb_nav_tick(
     )
 
 
-def apply_nav_tick(api, tick: NavTickResult, *, min_speed: float = 0.05) -> None:
+def apply_nav_tick(api, tick: NavTickResult, *, min_speed: float = 0.05) -> bool:
+    """Apply one nav tick. Returns True if geofence was violated."""
+    if tick.geofence_violation:
+        api.hover()
+        return True
     if not tick.ready:
         api.hover()
-        return
+        return False
     if tick.at_goal:
         api.hover()
-        return
+        return False
     speed = max(tick.speed, min_speed) if tick.speed > 0 else 0.0
     if speed <= 0.0:
         api.hover()
-        return
+        return False
     api.move(tick.direction, speed)
+    return False

@@ -9,14 +9,21 @@ from __future__ import annotations
 import asyncio
 import math
 
+from common.geofence import ArenaBounds
 from common.uwb_listener import get_uwb_position, set_simulated_position
 from common.velocity_nav import NavGains, compute_hover_velocity, compute_nav_velocity
 
 
 class FakeVelocityNavigator:
-    def __init__(self, gains: NavGains, sim_dt: float = 0.05) -> None:
+    def __init__(
+        self,
+        gains: NavGains,
+        sim_dt: float = 0.05,
+        geofence: ArenaBounds | None = None,
+    ) -> None:
         self.gains = gains
         self.sim_dt = sim_dt
+        self._geofence = geofence
         self.takeoff_yaw = 0.0
         self._down_m = -0.8
         self._height_ready = True
@@ -29,10 +36,14 @@ class FakeVelocityNavigator:
         *,
         ignore_height: bool = True,
     ) -> None:
+        if self._geofence is not None:
+            self._geofence.validate_point(target_n, target_e, "fly_to target")
         print(f"[SIM] Fly to N={target_n:.2f} E={target_e:.2f}")
         max_steps = 800
         for _ in range(max_steps):
             n, e, _ = get_uwb_position()
+            if self._geofence is not None:
+                self._geofence.check_position(n, e)
             vn, ve, vd, at_goal = compute_nav_velocity(
                 target_n - n,
                 target_e - e,
@@ -57,10 +68,14 @@ class FakeVelocityNavigator:
         lock_n, lock_e, ok = get_uwb_position()
         if not ok:
             raise RuntimeError("UWB not ready")
+        if self._geofence is not None:
+            self._geofence.check_position(lock_n, lock_e)
         print(f"[SIM] Hover {seconds:.1f}s at N={lock_n:.2f} E={lock_e:.2f}")
         steps = int(seconds / self.sim_dt)
         for _ in range(steps):
             n, e, _ = get_uwb_position()
+            if self._geofence is not None:
+                self._geofence.check_position(n, e)
             vn, ve, vd = compute_hover_velocity(
                 lock_n - n, lock_e - e, 0.0, self.gains, ignore_height=ignore_height
             )

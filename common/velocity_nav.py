@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Callable, Tuple
 from common.uwb_listener import get_uwb_position
 
 if TYPE_CHECKING:
+    from common.geofence import ArenaBounds
     from mavsdk import System
 
 
@@ -116,12 +117,14 @@ class VelocityNavigator:
         get_height: Callable[[], float],
         get_yaw: Callable[[], float],
         height_ready: Callable[[], bool],
+        geofence: "ArenaBounds | None" = None,
     ) -> None:
         self.drone = drone
         self.gains = gains
         self._get_height = get_height
         self._get_yaw = get_yaw
         self._height_ready = height_ready
+        self._geofence = geofence
         self.takeoff_yaw = 0.0
 
     async def send_velocity(self, vn: float, ve: float, vd: float) -> None:
@@ -148,6 +151,8 @@ class VelocityNavigator:
         *,
         ignore_height: bool = True,
     ) -> None:
+        if self._geofence is not None:
+            self._geofence.validate_point(target_n, target_e, "fly_to target")
         print(f"Fly to N={target_n:.2f} E={target_e:.2f} D={target_d:.2f}")
         while True:
             current_n, current_e, uwb_ok = get_uwb_position()
@@ -155,6 +160,9 @@ class VelocityNavigator:
                 await self.send_velocity(0.0, 0.0, 0.0)
                 await asyncio.sleep(0.2)
                 continue
+
+            if self._geofence is not None:
+                self._geofence.check_position(current_n, current_e)
 
             current_d = self._get_height()
             vn, ve, vd, at_goal = compute_nav_velocity(
@@ -176,6 +184,8 @@ class VelocityNavigator:
         hover_n, hover_e, ok = get_uwb_position()
         if not ok:
             raise RuntimeError("UWB not ready for hover")
+        if self._geofence is not None:
+            self._geofence.check_position(hover_n, hover_e)
         hover_d = self._get_height()
         print(f"Hover lock N={hover_n:.2f} E={hover_e:.2f} D={hover_d:.2f}")
         end = asyncio.get_running_loop().time() + seconds
@@ -186,6 +196,9 @@ class VelocityNavigator:
                 await self.send_velocity(0.0, 0.0, 0.0)
                 await asyncio.sleep(0.1)
                 continue
+
+            if self._geofence is not None:
+                self._geofence.check_position(current_n, current_e)
 
             current_d = self._get_height()
             vn, ve, vd = compute_hover_velocity(
