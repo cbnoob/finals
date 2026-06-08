@@ -17,6 +17,7 @@ from challenge2_swarm.dola import Dola
 from challenge2_swarm.swarm_core import DroneContext, run_swarm_loop
 from challenge2_swarm.target_sensor import YoloTargetSensor
 from common.config_loader import load_config
+from common.emergency import SwarmEmergencyGuard, land_all_hulas
 from common.uwb_c2 import UWBParserThreadC2
 from detection.target_detector import TargetDetector
 
@@ -84,8 +85,14 @@ def run_swarm_mission(config_path: str | None = None) -> None:
     detector = TargetDetector(swarm_cfg.get("yolo_weights"))
     sensor = YoloTargetSensor(detector, conf=float(swarm_cfg.get("detection_conf", 0.4)))
 
+    # SwarmEmergencyGuard lands every HULA on Ctrl+C / kill before exiting.
     try:
-        run_swarm_loop(contexts, uwb, cfg, sensor, simulated=False)
+        with SwarmEmergencyGuard(contexts):
+            run_swarm_loop(contexts, uwb, cfg, sensor, simulated=False)
+    except Exception as exc:
+        print(f"Swarm mission error: {exc}")
+        land_all_hulas(contexts)
+        raise
     finally:
         uwb.stop()
 

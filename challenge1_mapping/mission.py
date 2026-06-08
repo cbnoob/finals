@@ -23,6 +23,7 @@ from challenge1_mapping.survey_core import (
     save_mission_report,
 )
 from common.config_loader import load_config
+from common.emergency import emergency_land_mavsdk, fly_with_emergency_land
 from common.geofence import ArenaBounds, GeofenceViolation
 from common.uwb_listener import (
     get_uwb_position,
@@ -128,59 +129,49 @@ async def run_mission(config_path: str | None = None) -> None:
             print("Aborted.")
             return
 
-        await drone.action.arm()
-        await navigator.start_offboard()
-        await navigator.fly_to(home_n, home_e, takeoff_d, ignore_height=False)
-
         hover_s = float(m.get("hover_at_waypoint_s", 2.0))
 
-        for i, wp in enumerate(waypoints):
-            tn, te = float(wp["n"]), float(wp["e"])
-            print(f"--- Waypoint {i + 1}/{len(waypoints)} -> N={tn:.2f} E={te:.2f} ---")
-            await navigator.fly_to(tn, te, takeoff_d, ignore_height=True)
-            await navigator.hover(hover_s, ignore_height=True)
+        async def _flight() -> None:
+            """Arm → survey → normal land. Any error here (including a geofence
+            breach / dangerous location) propagates to the emergency lander."""
+            await drone.action.arm()
+            await navigator.start_offboard()
+            await navigator.fly_to(home_n, home_e, takeoff_d, ignore_height=False)
 
-            drone_n, drone_e, _ = get_uwb_position()
-            frames = rs.get_frames()
-            process_waypoint(
-                i, drone_n, drone_e, frames, aruco, arena, observations, OUTPUT_DIR, grid_cfg
-            )
+            for i, wp in enumerate(waypoints):
+                tn, te = float(wp["n"]), float(wp["e"])
+                print(f"--- Waypoint {i + 1}/{len(waypoints)} -> N={tn:.2f} E={te:.2f} ---")
+                await navigator.fly_to(tn, te, takeoff_d, ignore_height=True)
+                await navigator.hover(hover_s, ignore_height=True)
 
-        await navigator.send_velocity(0.0, 0.0, 0.0)
-        await drone.offboard.stop()
-        await drone.action.land()
-        async for in_air in drone.telemetry.in_air():
-            if not in_air:
-                break
-            await asyncio.sleep(0.3)
-        try:
-            await drone.action.disarm()
-        except Exception:
-            pass
+                drone_n, drone_e, _ = get_uwb_position()
+                frames = rs.get_frames()
+                process_waypoint(
+                    i, drone_n, drone_e, frames, aruco, arena, observations,
+                    OUTPUT_DIR, grid_cfg,
+                )
 
-    except GeofenceViolation as exc:
-        print(f"GEOFENCE: {exc}")
-        try:
             await navigator.send_velocity(0.0, 0.0, 0.0)
             await drone.offboard.stop()
-        except Exception:
-            pass
-        try:
             await drone.action.land()
-        except Exception:
-            pass
-        raise
+            async for in_air in drone.telemetry.in_air():
+                if not in_air:
+                    break
+                await asyncio.sleep(0.3)
+            try:
+                await drone.action.disarm()
+            except Exception:
+                pass
+
+        # Ctrl+C, kill signal, crash, or geofence breach -> land before exiting.
+        try:
+            await fly_with_emergency_land(_flight(), drone, navigator)
+        except GeofenceViolation as exc:
+            print(f"GEOFENCE (dangerous location): {exc}")
+
     except Exception as exc:
-        print(f"Mission error: {exc}")
-        try:
-            await navigator.send_velocity(0.0, 0.0, 0.0)
-            await drone.offboard.stop()
-        except Exception:
-            pass
-        try:
-            await drone.action.land()
-        except Exception:
-            pass
+        print(f"Mission setup error: {exc}")
+        await emergency_land_mavsdk(drone, navigator)
         raise
     finally:
         rs.stop()

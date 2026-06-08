@@ -22,6 +22,19 @@ scripts/aruco_demo.py      # Visual ArUco check (no hardware)
 scripts/occupancy_demo.py  # Visual occupancy grid check (no hardware)
 ```
 
+## Emergency landing (fail-safe)
+
+Drones **land instead of flying off or dropping** whenever something goes wrong
+(`common/emergency.py`):
+
+- **Ctrl+C / kill the program** → SIGINT/SIGTERM are intercepted and the drone lands
+  (mapping: stop offboard + `action.land()`; swarm: `api.land()` on every HULA)
+- **Crash / unhandled error** → emergency land runs before the exception propagates
+- **Dangerous location (geofence breach)** → land in place immediately
+
+It never uses `action.kill()` (that cuts motors and makes the drone drop) — always a
+controlled land. Verified by `tests/test_emergency.py` with fake drones.
+
 ## UWB geofence (stay inside anchor coverage)
 
 UWB position degrades outside the anchor zone and causes erratic velocity-control

@@ -211,8 +211,13 @@ def run_swarm_loop(
         if apply_nav_tick(ctx.api, tick, min_speed=min_move_speed):
             print(
                 f"tag {ctx.tag_id}: GEOFENCE — outside UWB anchors at "
-                f"N={tick.current_n:.2f} E={tick.current_e:.2f}, halting"
+                f"N={tick.current_n:.2f} E={tick.current_e:.2f}, EMERGENCY LAND in place"
             )
+            try:
+                ctx.api.land()
+            except Exception:
+                pass
+            ctx.landed = True
             _set_state(ctx, DroneState.DONE)
         return tick
 
