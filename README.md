@@ -48,6 +48,35 @@ flight. `common/geofence.py` enforces:
 Set `arena.uwb_bounds` in `config/challenge.yaml` to the measured anchor coverage
 on competition day.
 
+## Speed limits, HULA height & obstacle avoidance (finals brief rules)
+
+The finals brief sets hard rules — these are enforced in `config/challenge.yaml`:
+
+- **Mapping drone max 0.3 m/s** → `navigation.max_vel_xy: 0.3` (and `max_vel_z: 0.3`).
+- **HULA max 0.5 m/s** → `swarm.move_speed: 0.5`. The swarm's P-controller cap is set
+  to `move_speed` in `swarm_core` so it is *independent* of the mapping drone's 0.3 limit.
+  (Assumes pyhulax `move()` speed is m/s — **verify the unit on the test drone**.)
+- **HULA recommended height 1.1 m** → `swarm.hover_height_m: 1.1` (applied on takeoff;
+  the code tries `takeoff(height)` and falls back to a plain `takeoff()`).
+- **Strictly no flying over obstacles** (violation invalidates the score). The HULA flies
+  at a fixed low height, so obstacles are avoided **horizontally** — never by climbing.
+
+Obstacle avoidance (`challenge2_swarm/obstacle.py` + nav in `uwb_nav.py`):
+- The nav layer asks an `ObstacleSensor` "how far is the nearest obstacle if I move
+  N/S/E/W?" and picks the first **clear** direction toward the target; if the straight
+  path is blocked it **sidesteps around** the obstacle. If every direction is blocked it
+  **holds position** (never climbs over). Unreachable search waypoints are skipped after
+  `swarm.search_wp_timeout_s`.
+- Two sensor backends (config `swarm.obstacle_source`):
+  - `lidar` → `HulaObstacleSensor` reads the HULA's onboard obstacle sensing via pyhulax.
+    **The exact SDK call must be confirmed on the unit** and wired into
+    `HulaObstacleSensor._default_reader`. Until wired it **fails safe**: the mission
+    refuses to fly rather than risk flying over an obstacle.
+  - `map` → `MapObstacleSensor` uses obstacle boxes exported by Challenge 1 (UWB-based,
+    no lidar needed).
+- Tune `swarm.obstacle_stop_distance_m` (how close before avoiding) and
+  `swarm.obstacle_clearance_m` (inflation ≈ drone radius + buffer).
+
 ## Mission handoff: mapping drone → swarm
 
 The mapping drone (Challenge 1) produces the map; the swarm (Challenge 2) consumes it.

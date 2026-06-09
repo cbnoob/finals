@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from challenge2_swarm.obstacle import MapObstacleSensor, ObstacleBox
 from challenge2_swarm.sim.fake_swarm import build_fake_swarm
 from challenge2_swarm.sim.ground_robots import default_convoy
 from challenge2_swarm.swarm_core import DroneContext, load_landing_zones, run_swarm_loop
@@ -79,11 +80,22 @@ def run_dry_swarm(config_path: str | None = None, fast: bool = False) -> None:
     cfg["swarm"]["search_area"] = {"n_min": 0.0, "n_max": 1.0, "e_min": 0.0, "e_max": 1.0}
     cfg["swarm"]["search_spacing_m"] = 0.3
     cfg["swarm"]["use_map_bounds"] = False  # sim uses its own 1x1 m arena
+    # Obstacle avoidance tuned for the compact 1x1 m sim (brief: no flying over).
+    cfg["swarm"]["obstacle_avoidance_enabled"] = True
+    cfg["swarm"]["obstacle_clearance_m"] = 0.05
+    cfg["swarm"]["obstacle_stop_distance_m"] = 0.08
     swarm_cfg = cfg["swarm"]
     if fast:
         cfg["swarm"]["takeoff_wait_s"] = 0.2
-        cfg["swarm"]["uwb_nav_timeout_s"] = 40
+        cfg["swarm"]["uwb_nav_timeout_s"] = 12
+        cfg["swarm"]["search_wp_timeout_s"] = 2.0
         cfg["swarm"]["move_speed"] = 1.0
+
+    # A small obstacle in the middle the swarm must route AROUND (not over).
+    sim_obstacles = [ObstacleBox(n0=0.40, e0=0.40, n1=0.52, e1=0.52)]
+    clearance = float(cfg["swarm"]["obstacle_clearance_m"])
+    for ctx in contexts.values():
+        ctx.obstacle_sensor = MapObstacleSensor(sim_obstacles, clearance)
 
     # Simulated convoy of ground robots + proximity sensor
     robots = default_convoy()

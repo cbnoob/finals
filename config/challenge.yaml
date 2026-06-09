@@ -44,10 +44,13 @@ mapping_drone:
   hover_at_waypoint_s: 2.0
 
 navigation:
+  # Mapping drone P-controller. BRIEF RULE: max speed 0.3 m/s for the mapping drone,
+  # so the horizontal/vertical velocity caps are clamped to 0.3. (The swarm overrides
+  # its own cap to swarm.move_speed — see swarm_core.)
   kp_xy: 0.1
   kp_z: 0.1
-  max_vel_xy: 0.5
-  max_vel_z: 0.3
+  max_vel_xy: 0.3          # mapping drone max horizontal speed (m/s) — brief limit
+  max_vel_z: 0.3           # mapping drone max vertical speed (m/s)
   max_hover_xy: 0.15
   max_hover_z: 0.10
   n_threshold: 0.1
@@ -67,7 +70,15 @@ swarm:
   min_move_speed: 0.05        # floor so P-controller never stalls above threshold
   # Per-drone state machine timings (seconds)
   takeoff_wait_s: 5
-  move_speed: 0.5
+  move_speed: 0.5             # BRIEF RULE: HULA max speed 0.5 m/s (assumes pyhulax
+                              # move() speed is m/s — VERIFY units on the test drone)
+  hover_height_m: 1.1         # BRIEF: recommended HULA height; NEVER fly over obstacles
+  # --- Obstacle avoidance (BRIEF: strictly no flying over obstacles) ---
+  # The HULA flies at a fixed low height and must go AROUND obstacles horizontally.
+  obstacle_avoidance_enabled: true
+  obstacle_source: "lidar"    # lidar | map  (lidar = HULA onboard; map = from Challenge 1)
+  obstacle_stop_distance_m: 0.6   # start avoiding when an obstacle is this close ahead
+  obstacle_clearance_m: 0.3       # inflate obstacles by ~drone radius + buffer
   # --- SEARCH phase: find + snapshot the ground-robot convoy (primary goal) ---
   # Down-facing RealSense D430/D450 at >=3.5 m (same as mapping drone).
   camera_model: "D430"
