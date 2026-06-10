@@ -13,6 +13,10 @@ mapping_drone:
   serial_address: "serial:///dev/ttyS6:921600"
   # Mapping flight height. 2.0 m keeps markers large; verify obstacle clearance onsite.
   takeoff_height_m: 2.0
+  # Organizer move_it4.py sends PositionNedYaw targets directly in UWB N/E.
+  # If onsite testing proves PX4 local NED starts at the arming point instead,
+  # change this to "home".
+  position_ned_origin: "uwb"  # uwb | home
   # UWB ROS2 topic (from organizer stack)
   uwb_topic: "uwb_tag"
   # Down-facing RealSense (D430 or D450). Resolution is configurable on the unit;

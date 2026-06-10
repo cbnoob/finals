@@ -25,6 +25,20 @@ def test_world_to_local_ned_uses_home_as_origin():
     assert target.down_m == -2.0
 
 
+def test_world_to_local_ned_can_use_uwb_origin_directly():
+    target = world_to_local_ned(
+        target_n=4.0,
+        target_e=1.5,
+        target_d=-2.0,
+        home_n=1.0,
+        home_e=-0.5,
+        origin_mode="uwb",
+    )
+    assert target.north_m == 4.0
+    assert target.east_m == 1.5
+    assert target.down_m == -2.0
+
+
 class _PositionNedYaw:
     def __init__(self, north_m, east_m, down_m, yaw_deg):
         self.north_m = north_m
@@ -94,6 +108,26 @@ def test_position_ned_takeoff_waits_for_height():
     asyncio.run(nav.fly_to(0.0, 0.0, -2.0, ignore_height=False, timeout_s=2.0))
 
     assert len(drone.offboard.calls) > 1
+    assert drone.offboard.calls[-1][0].down_m == -2.0
+
+
+def test_position_ned_uwb_origin_sends_organizer_style_targets():
+    set_simulated_position(1.0, 1.0)
+    drone = _FakeDrone()
+    nav = PositionNedNavigator(
+        drone,
+        NavGains(),
+        home_n=1.0,
+        home_e=1.0,
+        get_yaw=lambda: 0.0,
+        get_down=lambda: -2.0,
+        origin_mode="uwb",
+    )
+
+    asyncio.run(nav.fly_to(4.0, 1.5, -2.0, timeout_s=0.05))
+
+    assert drone.offboard.calls[-1][0].north_m == 4.0
+    assert drone.offboard.calls[-1][0].east_m == 1.5
     assert drone.offboard.calls[-1][0].down_m == -2.0
 
 

@@ -70,6 +70,7 @@ async def run_mission(config_path: str | None = None) -> None:
         home_e=home_e,
         get_yaw=lambda: state["yaw"],
         get_down=lambda: state["down_m"],
+        origin_mode=m.get("position_ned_origin", "uwb"),
         geofence=geofence,
     )
 
@@ -111,7 +112,11 @@ async def run_mission(config_path: str | None = None) -> None:
 
     try:
         navigator.takeoff_yaw = state["yaw"]
-        print(f"Home UWB N={home_n:.2f} E={home_e:.2f}, yaw={navigator.takeoff_yaw:.1f}")
+        print(
+            f"Home UWB N={home_n:.2f} E={home_e:.2f}, "
+            f"yaw={navigator.takeoff_yaw:.1f}, "
+            f"position_ned_origin={navigator.origin_mode}"
+        )
         print(f"Battery: {state['battery']:.0f}%")
 
         waypoints = build_survey_waypoints(cfg)

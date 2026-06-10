@@ -35,8 +35,17 @@ def world_to_local_ned(
     target_d: float,
     home_n: float,
     home_e: float,
+    origin_mode: str = "home",
 ) -> LocalNedTarget:
-    """Convert UWB world N/E to local NED relative to the arming point."""
+    """Convert UWB world N/E to the PositionNedYaw frame."""
+    if origin_mode == "uwb":
+        return LocalNedTarget(
+            north_m=target_n,
+            east_m=target_e,
+            down_m=target_d,
+        )
+    if origin_mode != "home":
+        raise ValueError("origin_mode must be 'home' or 'uwb'")
     return LocalNedTarget(
         north_m=target_n - home_n,
         east_m=target_e - home_e,
@@ -53,6 +62,7 @@ class PositionNedNavigator:
         home_e: float,
         get_yaw: Callable[[], float],
         get_down: Callable[[], float],
+        origin_mode: str = "home",
         geofence: "ArenaBounds | None" = None,
     ) -> None:
         self.drone = drone
@@ -61,9 +71,22 @@ class PositionNedNavigator:
         self.home_e = home_e
         self._get_yaw = get_yaw
         self._get_down = get_down
+        if origin_mode not in ("home", "uwb"):
+            raise ValueError("origin_mode must be 'home' or 'uwb'")
+        self.origin_mode = origin_mode
         self._geofence = geofence
         self.takeoff_yaw = 0.0
         self._current_target = LocalNedTarget(0.0, 0.0, 0.0)
+
+    def _target_for_world(self, n: float, e: float, d: float) -> LocalNedTarget:
+        return world_to_local_ned(
+            n,
+            e,
+            d,
+            self.home_n,
+            self.home_e,
+            origin_mode=self.origin_mode,
+        )
 
     async def _set_position_velocity(
         self,
@@ -92,7 +115,10 @@ class PositionNedNavigator:
         from mavsdk.offboard import OffboardError
 
         self.takeoff_yaw = self._get_yaw()
-        initial = LocalNedTarget(0.0, 0.0, self._get_down())
+        current_n, current_e, uwb_ok = get_uwb_position()
+        if not uwb_ok:
+            current_n, current_e = self.home_n, self.home_e
+        initial = self._target_for_world(current_n, current_e, self._get_down())
         await self._set_position_velocity(initial, 0.0, 0.0, 0.0)
         try:
             await self.drone.offboard.start()
@@ -112,13 +138,7 @@ class PositionNedNavigator:
         if self._geofence is not None and validate_target:
             self._geofence.validate_point(target_n, target_e, "position target")
 
-        target = world_to_local_ned(
-            target_n,
-            target_e,
-            target_d,
-            self.home_n,
-            self.home_e,
-        )
+        target = self._target_for_world(target_n, target_e, target_d)
 
         print(f"Position-NED fly to N={target_n:.2f} E={target_e:.2f} D={target_d:.2f}")
         start_t = asyncio.get_running_loop().time()
@@ -185,7 +205,7 @@ class PositionNedNavigator:
         # Height is not part of the geofence, but the mapping mission should
         # keep holding the last commanded flight altitude during waypoint hovers.
         target_d = self._current_target.down_m
-        target = world_to_local_ned(hover_n, hover_e, target_d, self.home_n, self.home_e)
+        target = self._target_for_world(hover_n, hover_e, target_d)
         print(f"Position-NED hover lock N={hover_n:.2f} E={hover_e:.2f} D={target_d:.2f}")
         end = asyncio.get_running_loop().time() + seconds
 
