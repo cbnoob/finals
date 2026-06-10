@@ -76,6 +76,11 @@ async def run_mission(config_path: str | None = None) -> None:
         width=int(m.get("camera_width", 640)),
         height=int(m.get("camera_height", 480)),
         fps=int(m.get("camera_fps", 30)),
+        image_source=m.get("camera_image_source", "auto"),
+        disable_emitter_for_ir=bool(m.get("disable_ir_emitter", True)),
+        auto_exposure=m.get("camera_auto_exposure"),
+        exposure_us=m.get("camera_exposure"),
+        gain=m.get("camera_gain"),
     )
     aruco = ArucoDepthDetector(
         fx=rs.intrinsics.fx,
@@ -86,6 +91,7 @@ async def run_mission(config_path: str | None = None) -> None:
         valid_ids=m.get("valid_marker_ids", []),
         invalid_ids=m.get("invalid_marker_ids", []),
         marker_size_m=m.get("marker_size_m"),
+        preprocess=m.get("aruco_preprocess", "auto"),
     )
 
     bounds_raw = cfg.get("arena", {}).get("uwb_bounds", {})

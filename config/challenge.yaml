@@ -21,6 +21,13 @@ mapping_drone:
   camera_width: 1280
   camera_height: 720
   camera_fps: 30
+  camera_image_source: "auto"  # auto | color | infrared
+  disable_ir_emitter: true
+  # Leave exposure/gain null until tested onsite. If marker whites are washed out,
+  # try lower exposure values in scripts/realsense_aruco_check.py first.
+  camera_auto_exposure: null
+  camera_exposure: null
+  camera_gain: null
   # Camera intrinsics: leave null to read from RealSense at runtime
   fx: null
   fy: null
@@ -33,6 +40,7 @@ mapping_drone:
   # Valid IDs can change; the detector still reports every ArUco ID it sees.
   valid_marker_ids: [11, 45, 51, 67, 101]
   invalid_marker_ids: []
+  aruco_preprocess: "auto"  # none | equalize | clahe | adaptive | auto
   # Auto full-area survey: generate a lawnmower grid covering the whole anchor
   # safe-zone (uwb_bounds inset by safety_margin_m) so the drone maps everything.
   auto_survey: true

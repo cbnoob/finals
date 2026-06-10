@@ -62,6 +62,30 @@ def main() -> None:
         help="Keep the RealSense IR dot projector on when using infrared",
     )
     parser.add_argument(
+        "--preprocess",
+        choices=("none", "equalize", "clahe", "adaptive", "auto"),
+        default="auto",
+        help="Retry ArUco detection on enhanced grayscale images",
+    )
+    parser.add_argument(
+        "--auto-exposure",
+        choices=("on", "off"),
+        default=None,
+        help="Force RealSense auto exposure on/off",
+    )
+    parser.add_argument(
+        "--exposure",
+        type=float,
+        default=None,
+        help="Manual RealSense exposure value; lower values reduce glare",
+    )
+    parser.add_argument(
+        "--gain",
+        type=float,
+        default=None,
+        help="Manual RealSense gain value; lower values reduce noise/glare",
+    )
+    parser.add_argument(
         "--out-dir",
         default=str(ROOT / "output" / "aruco_check"),
         help="Directory for annotated frames",
@@ -84,6 +108,9 @@ def main() -> None:
         fps=int(m.get("camera_fps", 30)),
         image_source=args.image_source,
         disable_emitter_for_ir=not args.keep_emitter,
+        auto_exposure=None if args.auto_exposure is None else args.auto_exposure == "on",
+        exposure_us=args.exposure,
+        gain=args.gain,
     )
     detector = ArucoDepthDetector(
         fx=rs.intrinsics.fx,
@@ -94,11 +121,12 @@ def main() -> None:
         valid_ids=m.get("valid_marker_ids", []),
         invalid_ids=m.get("invalid_marker_ids", []),
         marker_size_m=m.get("marker_size_m"),
+        preprocess=args.preprocess,
     )
 
     print(
         f"Dictionary={m.get('aruco_dictionary', 'DICT_7X7_1000')} "
-        f"valid_ids={m.get('valid_marker_ids', [])}"
+        f"valid_ids={m.get('valid_marker_ids', [])} preprocess={args.preprocess}"
     )
     seen: set[int] = set()
 

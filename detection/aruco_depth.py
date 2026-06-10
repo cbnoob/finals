@@ -56,11 +56,19 @@ class ArucoDepthDetector:
         valid_ids: Iterable[int] | None = None,
         invalid_ids: Iterable[int] | None = None,
         marker_size_m: float | None = None,
+        preprocess: str = "none",
     ) -> None:
         if dictionary_name not in ARUCO_DICTS:
             raise ValueError(f"Unknown dictionary: {dictionary_name}")
+        if preprocess not in ("none", "equalize", "clahe", "adaptive", "auto"):
+            raise ValueError("preprocess must be none, equalize, clahe, adaptive, or auto")
         aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICTS[dictionary_name])
         params = cv2.aruco.DetectorParameters()
+        params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+        params.adaptiveThreshWinSizeMin = 3
+        params.adaptiveThreshWinSizeMax = 35
+        params.adaptiveThreshWinSizeStep = 4
+        params.minMarkerPerimeterRate = 0.02
         self.detector = cv2.aruco.ArucoDetector(aruco_dict, params)
         self.fx = fx
         self.fy = fy
@@ -69,6 +77,7 @@ class ArucoDepthDetector:
         self.valid_ids = set(valid_ids or [])
         self.invalid_ids = set(invalid_ids or [])
         self.marker_size_m = marker_size_m
+        self.preprocess = preprocess
         self._camera_matrix = np.array(
             [[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=np.float64
         )
@@ -108,6 +117,34 @@ class ArucoDepthDetector:
             return 0.0
         return float(np.median(valid)) / 1000.0
 
+    def _gray_candidates(self, gray: np.ndarray) -> list[np.ndarray]:
+        if self.preprocess == "none":
+            return [gray]
+        equalized = cv2.equalizeHist(gray)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+        if self.preprocess == "equalize":
+            return [equalized]
+        if self.preprocess == "clahe":
+            return [clahe]
+        adaptive = cv2.adaptiveThreshold(
+            clahe,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            31,
+            3,
+        )
+        if self.preprocess == "adaptive":
+            return [adaptive]
+        return [gray, clahe, equalized, adaptive]
+
+    def _detect_markers(self, gray: np.ndarray):
+        for candidate in self._gray_candidates(gray):
+            corners, ids, rejected = self.detector.detectMarkers(candidate)
+            if ids is not None:
+                return corners, ids, rejected
+        return [], None, []
+
     def detect(
         self,
         color_bgr: np.ndarray,
@@ -116,7 +153,7 @@ class ArucoDepthDetector:
         draw: bool = False,
     ) -> list[MarkerObservation]:
         gray = cv2.cvtColor(color_bgr, cv2.COLOR_BGR2GRAY)
-        corners, ids, _ = self.detector.detectMarkers(gray)
+        corners, ids, _ = self._detect_markers(gray)
         results: list[MarkerObservation] = []
 
         if ids is None:

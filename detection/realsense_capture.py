@@ -40,6 +40,9 @@ class RealSenseCapture:
         fps: int = 30,
         image_source: str = "auto",
         disable_emitter_for_ir: bool = True,
+        auto_exposure: bool | None = None,
+        exposure_us: float | None = None,
+        gain: float | None = None,
     ) -> None:
         if rs is None:
             raise ImportError("pyrealsense2 not installed")
@@ -52,6 +55,7 @@ class RealSenseCapture:
         profile = self._start_pipeline(width, height, fps, image_source)
         if self.image_source == "infrared" and disable_emitter_for_ir:
             self._disable_emitter(profile)
+        self._apply_sensor_options(profile, auto_exposure, exposure_us, gain)
         image_profile = profile.get_stream(self._image_stream)
         intr = image_profile.as_video_stream_profile().get_intrinsics()
         self.intrinsics = Intrinsics(
@@ -101,6 +105,39 @@ class RealSenseCapture:
             print("RealSense IR emitter: disabled")
         except Exception as exc:
             print(f"Warning: could not disable RealSense IR emitter: {exc}")
+
+    def _set_option_if_supported(self, sensor, option, value: float, label: str) -> bool:
+        if not sensor.supports(option):
+            return False
+        opt_range = sensor.get_option_range(option)
+        clamped = min(max(float(value), opt_range.min), opt_range.max)
+        sensor.set_option(option, clamped)
+        print(f"RealSense {label}: {clamped:g}")
+        return True
+
+    def _apply_sensor_options(
+        self,
+        profile,
+        auto_exposure: bool | None,
+        exposure_us: float | None,
+        gain: float | None,
+    ) -> None:
+        if auto_exposure is None and exposure_us is None and gain is None:
+            return
+        try:
+            device = profile.get_device()
+            for sensor in device.query_sensors():
+                if auto_exposure is not None and sensor.supports(rs.option.enable_auto_exposure):
+                    sensor.set_option(rs.option.enable_auto_exposure, 1.0 if auto_exposure else 0.0)
+                    print(f"RealSense auto exposure: {'on' if auto_exposure else 'off'}")
+                if exposure_us is not None:
+                    if sensor.supports(rs.option.enable_auto_exposure):
+                        sensor.set_option(rs.option.enable_auto_exposure, 0.0)
+                    self._set_option_if_supported(sensor, rs.option.exposure, exposure_us, "exposure")
+                if gain is not None:
+                    self._set_option_if_supported(sensor, rs.option.gain, gain, "gain")
+        except Exception as exc:
+            print(f"Warning: could not apply RealSense sensor options: {exc}")
 
     def get_frames(self) -> FramePair:
         frames = self.pipeline.wait_for_frames()
