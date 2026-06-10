@@ -57,6 +57,11 @@ def main() -> None:
         help="Use RGB color, Infrared 1, or auto fallback",
     )
     parser.add_argument(
+        "--keep-emitter",
+        action="store_true",
+        help="Keep the RealSense IR dot projector on when using infrared",
+    )
+    parser.add_argument(
         "--out-dir",
         default=str(ROOT / "output" / "aruco_check"),
         help="Directory for annotated frames",
@@ -78,6 +83,7 @@ def main() -> None:
         height=int(m.get("camera_height", 720)),
         fps=int(m.get("camera_fps", 30)),
         image_source=args.image_source,
+        disable_emitter_for_ir=not args.keep_emitter,
     )
     detector = ArucoDepthDetector(
         fx=rs.intrinsics.fx,

@@ -39,6 +39,7 @@ class RealSenseCapture:
         height: int = 480,
         fps: int = 30,
         image_source: str = "auto",
+        disable_emitter_for_ir: bool = True,
     ) -> None:
         if rs is None:
             raise ImportError("pyrealsense2 not installed")
@@ -49,6 +50,8 @@ class RealSenseCapture:
         self.align = None
 
         profile = self._start_pipeline(width, height, fps, image_source)
+        if self.image_source == "infrared" and disable_emitter_for_ir:
+            self._disable_emitter(profile)
         image_profile = profile.get_stream(self._image_stream)
         intr = image_profile.as_video_stream_profile().get_intrinsics()
         self.intrinsics = Intrinsics(
@@ -85,6 +88,19 @@ class RealSenseCapture:
                 except Exception:
                     pass
         raise RuntimeError(f"Could not start RealSense streams: {last_error}")
+
+    def _disable_emitter(self, profile) -> None:
+        """Turn off the D4xx dot projector so IR ArUco images stay clean."""
+        try:
+            device = profile.get_device()
+            for sensor in device.query_sensors():
+                if sensor.supports(rs.option.emitter_enabled):
+                    sensor.set_option(rs.option.emitter_enabled, 0)
+                if sensor.supports(rs.option.laser_power):
+                    sensor.set_option(rs.option.laser_power, 0)
+            print("RealSense IR emitter: disabled")
+        except Exception as exc:
+            print(f"Warning: could not disable RealSense IR emitter: {exc}")
 
     def get_frames(self) -> FramePair:
         frames = self.pipeline.wait_for_frames()
