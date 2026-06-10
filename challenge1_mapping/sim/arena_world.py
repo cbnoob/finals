@@ -28,23 +28,23 @@ class SimObstacle:
     height_m: float = 0.5
 
 
-# A more realistic practice layout: five landing sites plus extra invalid markers
-# and several obstacles spread across a 4 m x 4 m arena.
+# Current onsite practice layout. User-provided coordinates are x/y in meters
+# inside the UWB anchor bounds, where x maps to East and y maps to North.
 DEFAULT_PADS = [
-    SimLandingPad(11, 0.45, 0.45, True),
-    SimLandingPad(45, 1.55, 0.95, True),
-    SimLandingPad(51, 2.85, 0.55, True),
-    SimLandingPad(67, 3.45, 2.15, True),
-    SimLandingPad(101, 0.75, 3.35, True),
-    SimLandingPad(201, 1.15, 2.45, False),
-    SimLandingPad(202, 2.25, 1.85, False),
-    SimLandingPad(203, 3.35, 3.35, False),
+    SimLandingPad(11, 4.40, 1.35, True),
+    SimLandingPad(45, 7.85, 1.30, True),
+    SimLandingPad(51, 4.40, 4.40, True),
+    SimLandingPad(67, 8.70, 1.95, True),
+    SimLandingPad(101, 7.85, 4.40, True),
+    SimLandingPad(201, 2.30, 2.35, False),
+    SimLandingPad(202, 6.10, 3.10, False),
+    SimLandingPad(203, 9.10, 3.85, False),
 ]
 
 DEFAULT_OBSTACLES = [
-    SimObstacle(0.85, 0.25, 1.25, 0.65, height_m=0.45),
-    SimObstacle(0.55, 1.55, 1.05, 2.05, height_m=0.65),
-    SimObstacle(1.65, 2.75, 2.15, 3.35, height_m=0.50),
-    SimObstacle(2.55, 1.15, 3.10, 1.55, height_m=0.75),
-    SimObstacle(3.20, 2.65, 3.70, 3.05, height_m=0.40),
+    SimObstacle(1.00, 0.85, 1.60, 1.45, height_m=0.45),
+    SimObstacle(2.70, 3.15, 3.35, 3.85, height_m=0.65),
+    SimObstacle(5.00, 1.90, 5.75, 2.55, height_m=0.50),
+    SimObstacle(6.60, 0.65, 7.20, 1.20, height_m=0.75),
+    SimObstacle(8.45, 3.00, 9.10, 3.70, height_m=0.40),
 ]

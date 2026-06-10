@@ -50,31 +50,6 @@ async def run_dry_mission(config_path: str | None = None, fast: bool = False) ->
     m = cfg["mapping_drone"]
     nav_cfg = cfg["navigation"]
 
-    # Use a richer practice arena instead of the real competition survey plan.
-    # This keeps the dry-run deterministic while exercising valid/invalid pads,
-    # obstacle mapping, and a broader lawnmower-style path.
-    cfg = dict(cfg)
-    cfg["mapping_drone"] = dict(cfg["mapping_drone"])
-    cfg["mapping_drone"]["auto_survey"] = False
-    cfg["mapping_drone"]["survey_waypoints"] = [
-        {"n": 0.5, "e": 0.5},
-        {"n": 0.5, "e": 1.5},
-        {"n": 0.5, "e": 2.5},
-        {"n": 0.5, "e": 3.5},
-        {"n": 1.5, "e": 3.5},
-        {"n": 1.5, "e": 2.5},
-        {"n": 1.5, "e": 1.5},
-        {"n": 1.5, "e": 0.5},
-        {"n": 2.5, "e": 0.5},
-        {"n": 2.5, "e": 1.5},
-        {"n": 2.5, "e": 2.5},
-        {"n": 2.5, "e": 3.5},
-        {"n": 3.5, "e": 3.5},
-        {"n": 3.5, "e": 2.5},
-        {"n": 3.5, "e": 1.5},
-        {"n": 3.5, "e": 0.5},
-    ]
-
     bounds_raw = cfg.get("arena", {}).get("uwb_bounds", {})
     arena_cfg = ArenaMapConfig(
         n_min=float(bounds_raw.get("n_min", -5.0)),
@@ -95,7 +70,7 @@ async def run_dry_mission(config_path: str | None = None, fast: bool = False) ->
 
     rs = FakeRealSenseCapture(
         arena_cfg=arena_cfg,
-        camera_height_m=1.6,
+        camera_height_m=float(m.get("takeoff_height_m", 2.0)),
         dictionary_name=m.get("aruco_dictionary", "DICT_7X7_1000"),
     )
     aruco = ArucoDepthDetector(
@@ -106,6 +81,8 @@ async def run_dry_mission(config_path: str | None = None, fast: bool = False) ->
         dictionary_name=m.get("aruco_dictionary", "DICT_7X7_1000"),
         valid_ids=m.get("valid_marker_ids", []),
         invalid_ids=m.get("invalid_marker_ids", []),
+        marker_size_m=m.get("marker_size_m"),
+        preprocess=m.get("aruco_preprocess", "auto"),
     )
 
     arena = ArenaMap(arena_cfg)

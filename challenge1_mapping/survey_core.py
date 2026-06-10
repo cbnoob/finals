@@ -11,7 +11,7 @@ from pathlib import Path
 import cv2
 
 from challenge1_mapping.arena_map import ArenaMap, marker_world_position
-from challenge2_swarm.search_pattern import Region, lawnmower_waypoints
+from challenge2_swarm.search_pattern import Region, densify_path, lawnmower_waypoints
 from detection.aruco_depth import ArucoDepthDetector
 from detection.occupancy_grid import (
     GridConfig,
@@ -47,6 +47,8 @@ def build_survey_waypoints(cfg: dict) -> list[dict]:
     )
     spacing = float(m.get("survey_spacing_m", 2.0))
     pts = lawnmower_waypoints(region, spacing)
+    capture_step = float(m.get("survey_capture_spacing_m", spacing))
+    pts = densify_path(pts, step=capture_step)
     return [{"n": n, "e": e} for n, e in pts]
 
 

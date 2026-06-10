@@ -45,6 +45,7 @@ mapping_drone:
   # safe-zone (uwb_bounds inset by safety_margin_m) so the drone maps everything.
   auto_survey: true
   survey_spacing_m: 1.2   # tighter spacing for ~2 m flight height and overlap
+  survey_capture_spacing_m: 1.0  # sample camera along long lawnmower legs
   # Fallback manual waypoints (used when auto_survey is false), UWB N/E meters.
   survey_waypoints:
     - { n: 0.0, e: 0.0 }
