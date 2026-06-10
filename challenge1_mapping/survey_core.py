@@ -52,6 +52,39 @@ def build_survey_waypoints(cfg: dict) -> list[dict]:
     return [{"n": n, "e": e} for n, e in pts]
 
 
+def order_waypoints_from_start(
+    waypoints: list[dict],
+    start_n: float,
+    start_e: float,
+) -> list[dict]:
+    """Order survey points from the drone's random UWB start position.
+
+    The competition origin is fixed at the arena corner, but the drone can start
+    anywhere inside the arena. A nearest-neighbour ordering avoids immediately
+    sending the drone across the whole arena just to reach the default first
+    lawnmower point.
+    """
+    remaining = [dict(wp) for wp in waypoints]
+    ordered: list[dict] = []
+    current_n = float(start_n)
+    current_e = float(start_e)
+
+    while remaining:
+        idx = min(
+            range(len(remaining)),
+            key=lambda i: math.hypot(
+                float(remaining[i]["n"]) - current_n,
+                float(remaining[i]["e"]) - current_e,
+            ),
+        )
+        wp = remaining.pop(idx)
+        ordered.append(wp)
+        current_n = float(wp["n"])
+        current_e = float(wp["e"])
+
+    return ordered
+
+
 def process_waypoint(
     waypoint_index: int,
     drone_n: float,

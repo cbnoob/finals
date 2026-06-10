@@ -169,15 +169,21 @@ class PositionNedNavigator:
 
             now = asyncio.get_running_loop().time()
             if now - last_sent >= 0.2:
-                # VelocityNedYaw is a constraint/feed-forward hint for the
-                # position controller, following the organiser sample.
+                # PositionNedYaw is the real position target; PX4 may move fast
+                # toward a far setpoint. Send a rolling nearby target so the
+                # position controller cannot chase a distant point aggressively.
                 dist = math.hypot(err_n, err_e)
                 if dist > 1e-6:
                     speed = min(self.gains.max_vel_xy, max(0.05, self.gains.kp_xy * dist))
                     vn = speed * err_n / dist
                     ve = speed * err_e / dist
+                    step = min(float(self.gains.max_position_step_m), dist)
+                    command_n = current_n + step * err_n / dist
+                    command_e = current_e + step * err_e / dist
                 else:
                     vn = ve = 0.0
+                    command_n = target_n
+                    command_e = target_e
                 if ignore_height:
                     vd = 0.0
                 else:
@@ -185,12 +191,14 @@ class PositionNedNavigator:
                         -self.gains.max_vel_z,
                         min(self.gains.max_vel_z, self.gains.kp_z * err_d),
                     )
-                await self._set_position_velocity(target, vn, ve, vd)
+                command_target = self._target_for_world(command_n, command_e, target_d)
+                await self._set_position_velocity(command_target, vn, ve, vd)
                 last_sent = now
 
             if now - start_t > timeout_s:
-                print("Waypoint timeout; holding target position")
-                await self._set_position_velocity(target, 0.0, 0.0, 0.0)
+                print("Waypoint timeout; holding current position")
+                hold_target = self._target_for_world(current_n, current_e, target_d)
+                await self._set_position_velocity(hold_target, 0.0, 0.0, 0.0)
                 return
 
             await asyncio.sleep(0.1)

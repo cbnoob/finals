@@ -26,10 +26,12 @@ from common.config_loader import load_config
 from common.emergency import emergency_land_mavsdk, fly_with_emergency_land
 from common.geofence import ArenaBounds
 from common.uwb_listener import get_uwb_position, shutdown_uwb, start_uwb_thread, wait_for_uwb
+from challenge1_mapping.survey_core import order_waypoints_from_start
 
 
 DEFAULT_SPEED_MPS = 0.3
 DEFAULT_HEIGHT_M = 2.0
+DEFAULT_POSITION_STEP_M = 0.4
 DEFAULT_WAYPOINTS = [
     (0.7, 0.7),
     (2.5, 0.7),
@@ -120,6 +122,7 @@ async def _fly_to_waypoint(
     start_n: float,
     start_e: float,
     timeout_s: float,
+    position_step_m: float,
 ) -> None:
     target_d = -abs(height_m)
     deadline = asyncio.get_running_loop().time() + timeout_s
@@ -153,11 +156,17 @@ async def _fly_to_waypoint(
             print("Waypoint reached.")
             return
 
-        await _setpoint(drone, target_n, target_e, target_d, vn, ve, 0.0)
+        if distance_to_target > 1e-6:
+            step = min(position_step_m, distance_to_target)
+            command_n = current_n + step * (target_n - current_n) / distance_to_target
+            command_e = current_e + step * (target_e - current_e) / distance_to_target
+        else:
+            command_n, command_e = target_n, target_e
+        await _setpoint(drone, command_n, command_e, target_d, vn, ve, 0.0)
 
         if asyncio.get_running_loop().time() > deadline:
-            print("Waypoint timeout; holding current target.")
-            await _setpoint(drone, target_n, target_e, target_d, 0.0, 0.0, 0.0)
+            print("Waypoint timeout; holding current position.")
+            await _setpoint(drone, current_n, current_e, target_d, 0.0, 0.0, 0.0)
             return
 
         await asyncio.sleep(0.2)
@@ -171,6 +180,14 @@ async def _sample_flight(drone, args, waypoints: list[tuple[float, float]]) -> N
 
     start_n, start_e = await wait_for_uwb(timeout_s=30.0)
     print(f"Initial UWB N={start_n:.2f} E={start_e:.2f}")
+    if not args.keep_order and len(waypoints) > 1:
+        ordered = order_waypoints_from_start(
+            [{"n": n, "e": e} for n, e in waypoints],
+            start_n,
+            start_e,
+        )
+        waypoints = [(float(wp["n"]), float(wp["e"])) for wp in ordered]
+        print(f"Random-start ordering: first sample waypoint N={waypoints[0][0]:.2f} E={waypoints[0][1]:.2f}")
 
     print("Arming...")
     await drone.action.arm()
@@ -201,6 +218,7 @@ async def _sample_flight(drone, args, waypoints: list[tuple[float, float]]) -> N
             start_n,
             start_e,
             args.timeout,
+            args.position_step,
         )
         await asyncio.sleep(args.hover)
 
@@ -251,6 +269,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=35.0, help="Seconds per waypoint before holding.")
     parser.add_argument("--hover", type=float, default=0.5, help="Seconds to pause at each waypoint.")
     parser.add_argument("--settle", type=float, default=1.0, help="Seconds to hold after takeoff.")
+    parser.add_argument("--position-step", type=float, default=DEFAULT_POSITION_STEP_M, help="Rolling PositionNED target step in metres.")
+    parser.add_argument("--keep-order", action="store_true", help="Do not reorder waypoints from current UWB start.")
     parser.add_argument(
         "--waypoint",
         action="append",
@@ -271,6 +291,10 @@ async def main() -> None:
     topic = args.uwb_topic or mapping.get("uwb_topic", "uwb_tag")
     args.height = float(args.height or mapping.get("takeoff_height_m", DEFAULT_HEIGHT_M))
     args.speed = min(float(args.speed), float(nav.get("max_vel_xy", DEFAULT_SPEED_MPS)), DEFAULT_SPEED_MPS)
+    args.position_step = min(
+        float(args.position_step),
+        float(nav.get("max_position_step_m", DEFAULT_POSITION_STEP_M)),
+    )
     waypoints = args.waypoint or _load_default_waypoints(args.config)
 
     arena = cfg.get("arena", {})
@@ -283,6 +307,7 @@ async def main() -> None:
     print(f"Serial: {serial}")
     print(f"UWB topic: {topic}")
     print(f"Height: {args.height:.2f}m, max speed: {args.speed:.2f}m/s")
+    print(f"Rolling position step: {args.position_step:.2f}m")
     print(f"Waypoints: {len(waypoints)}")
     print("Emergency key: press 'e' to land.")
 

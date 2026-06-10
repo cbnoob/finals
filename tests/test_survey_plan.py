@@ -1,6 +1,8 @@
 """Auto full-area survey waypoint generation."""
 
-from challenge1_mapping.survey_core import build_survey_waypoints
+import math
+
+from challenge1_mapping.survey_core import build_survey_waypoints, order_waypoints_from_start
 
 
 def _cfg(auto: bool) -> dict:
@@ -34,3 +36,16 @@ def test_auto_survey_covers_safe_zone():
     es = [wp["e"] for wp in wps]
     assert max(ns) - min(ns) > 8.0
     assert max(es) - min(es) > 6.0
+
+
+def test_survey_can_start_from_nearest_random_position():
+    wps = build_survey_waypoints(_cfg(True))
+    ordered = order_waypoints_from_start(wps, start_n=0.9, start_e=2.56)
+
+    assert len(ordered) == len(wps)
+    assert {tuple(wp.items()) for wp in ordered} == {tuple(wp.items()) for wp in wps}
+    first = ordered[0]
+    first_dist = math.hypot(first["n"] - 0.9, first["e"] - 2.56)
+    original_first_dist = math.hypot(wps[0]["n"] - 0.9, wps[0]["e"] - 2.56)
+    assert first_dist < original_first_dist
+    assert first_dist < 1.5

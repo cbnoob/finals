@@ -19,6 +19,7 @@ from pathlib import Path
 from challenge1_mapping.arena_map import ArenaMap, ArenaMapConfig
 from challenge1_mapping.survey_core import (
     build_survey_waypoints,
+    order_waypoints_from_start,
     process_waypoint,
     save_mission_report,
 )
@@ -120,6 +121,14 @@ async def run_mission(config_path: str | None = None) -> None:
         print(f"Battery: {state['battery']:.0f}%")
 
         waypoints = build_survey_waypoints(cfg)
+        if m.get("start_nearest_waypoint", True):
+            waypoints = order_waypoints_from_start(waypoints, home_n, home_e)
+            if waypoints:
+                first = waypoints[0]
+                print(
+                    f"Random-start ordering: first waypoint is nearest to start "
+                    f"N={float(first['n']):.2f} E={float(first['e']):.2f}"
+                )
         print(f"Survey plan: {len(waypoints)} waypoints "
               f"({'auto full-area' if m.get('auto_survey') else 'manual'})")
         if geofence is not None:

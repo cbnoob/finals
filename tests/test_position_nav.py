@@ -111,12 +111,12 @@ def test_position_ned_takeoff_waits_for_height():
     assert drone.offboard.calls[-1][0].down_m == -2.0
 
 
-def test_position_ned_uwb_origin_sends_organizer_style_targets():
+def test_position_ned_uwb_origin_sends_rolling_nearby_targets():
     set_simulated_position(1.0, 1.0)
     drone = _FakeDrone()
     nav = PositionNedNavigator(
         drone,
-        NavGains(),
+        NavGains(max_position_step_m=0.4),
         home_n=1.0,
         home_e=1.0,
         get_yaw=lambda: 0.0,
@@ -126,9 +126,11 @@ def test_position_ned_uwb_origin_sends_organizer_style_targets():
 
     asyncio.run(nav.fly_to(4.0, 1.5, -2.0, timeout_s=0.05))
 
-    assert drone.offboard.calls[-1][0].north_m == 4.0
-    assert drone.offboard.calls[-1][0].east_m == 1.5
-    assert drone.offboard.calls[-1][0].down_m == -2.0
+    command = drone.offboard.calls[-2][0]
+    assert command.north_m < 4.0
+    assert command.east_m < 1.5
+    assert command.down_m == -2.0
+    assert ((command.north_m - 1.0) ** 2 + (command.east_m - 1.0) ** 2) ** 0.5 <= 0.41
 
 
 def test_hover_keeps_commanded_flight_height():

@@ -48,6 +48,9 @@ mapping_drone:
   # Auto full-area survey: generate a lawnmower grid covering the whole anchor
   # safe-zone (uwb_bounds inset by safety_margin_m) so the drone maps everything.
   auto_survey: true
+  # The organiser can place the drone anywhere. Start from the nearest survey
+  # point to avoid an immediate long flight across the arena.
+  start_nearest_waypoint: true
   survey_spacing_m: 1.2   # tighter spacing for ~2 m flight height and overlap
   survey_capture_spacing_m: 1.0  # sample camera along long lawnmower legs
   # Fallback manual waypoints (used when auto_survey is false), UWB N/E meters.
@@ -67,6 +70,7 @@ navigation:
   kp_z: 0.1
   max_vel_xy: 0.3          # mapping drone max horizontal speed (m/s) — brief limit
   max_vel_z: 0.3           # mapping drone max vertical speed (m/s)
+  max_position_step_m: 0.4 # rolling PositionNED target distance; avoids far-target rushes
   max_hover_xy: 0.15
   max_hover_z: 0.10
   n_threshold: 0.1

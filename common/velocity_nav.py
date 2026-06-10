@@ -27,6 +27,7 @@ class NavGains:
     kp_z: float = 0.1
     max_vel_xy: float = 0.5
     max_vel_z: float = 0.3
+    max_position_step_m: float = 0.4
     max_hover_xy: float = 0.15
     max_hover_z: float = 0.10
     n_threshold: float = 0.1
