@@ -182,7 +182,9 @@ class PositionNedNavigator:
         if self._geofence is not None:
             self._geofence.check_position(hover_n, hover_e)
 
-        target_d = self._current_target.down_m if ignore_height else self._get_down()
+        # Height is not part of the geofence, but the mapping mission should
+        # keep holding the last commanded flight altitude during waypoint hovers.
+        target_d = self._current_target.down_m
         target = world_to_local_ned(hover_n, hover_e, target_d, self.home_n, self.home_e)
         print(f"Position-NED hover lock N={hover_n:.2f} E={hover_e:.2f} D={target_d:.2f}")
         end = asyncio.get_running_loop().time() + seconds

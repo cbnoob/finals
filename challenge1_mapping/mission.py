@@ -151,13 +151,13 @@ async def run_mission(config_path: str | None = None) -> None:
                 ignore_height=False,
                 validate_target=False,
             )
-            await navigator.hover(float(m.get("takeoff_settle_s", 1.0)), ignore_height=True)
+            await navigator.hover(float(m.get("takeoff_settle_s", 1.0)), ignore_height=False)
 
             for i, wp in enumerate(waypoints):
                 tn, te = float(wp["n"]), float(wp["e"])
                 print(f"--- Waypoint {i + 1}/{len(waypoints)} -> N={tn:.2f} E={te:.2f} ---")
-                await navigator.fly_to(tn, te, takeoff_d, ignore_height=True)
-                await navigator.hover(hover_s, ignore_height=True)
+                await navigator.fly_to(tn, te, takeoff_d, ignore_height=False)
+                await navigator.hover(hover_s, ignore_height=False)
 
                 drone_n, drone_e, _ = get_uwb_position()
                 frames = rs.get_frames()

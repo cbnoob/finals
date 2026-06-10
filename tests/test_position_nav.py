@@ -97,7 +97,7 @@ def test_position_ned_takeoff_waits_for_height():
     assert drone.offboard.calls[-1][0].down_m == -2.0
 
 
-def test_hover_keeps_current_flight_height():
+def test_hover_keeps_commanded_flight_height():
     set_simulated_position(1.0, 1.0)
     drone = _FakeDrone()
     nav = PositionNedNavigator(
@@ -106,11 +106,12 @@ def test_hover_keeps_current_flight_height():
         home_n=0.0,
         home_e=0.0,
         get_yaw=lambda: 0.0,
-        get_down=lambda: -2.0,
+        get_down=lambda: -1.8,
     )
     nav._current_target = LocalNedTarget(1.0, 1.0, -2.0)
 
-    asyncio.run(nav.hover(0.01, ignore_height=True))
+    asyncio.run(nav.hover(0.01, ignore_height=False))
 
     assert drone.offboard.calls
     assert drone.offboard.calls[-1][0].down_m == -2.0
+    assert drone.offboard.calls[0][1].down_m_s < 0.0
