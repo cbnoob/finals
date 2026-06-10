@@ -130,3 +130,23 @@ def test_fly_with_emergency_land_normal_completion():
     asyncio.run(fly_with_emergency_land(_flight(), drone, nav))
     # Normal completion must NOT trigger an emergency land
     assert drone.action.landed is False
+
+
+def test_fly_with_emergency_land_lands_on_keyboard_key(monkeypatch):
+    drone = _FakeDrone()
+    nav = _FakeNav()
+
+    def _fake_keyboard_listener(key, request_stop):
+        assert key == "e"
+        request_stop("keyboard 'e'")
+        return lambda: None
+
+    monkeypatch.setattr("common.emergency._start_keyboard_listener", _fake_keyboard_listener)
+
+    async def _flight():
+        await asyncio.sleep(10)
+
+    asyncio.run(fly_with_emergency_land(_flight(), drone, nav))
+    assert drone.action.landed is True
+    assert drone.offboard.stopped is True
+    assert nav.zeroed is True

@@ -11,7 +11,10 @@ Two worlds:
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
+import sys
+import threading
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 if TYPE_CHECKING:
@@ -50,10 +53,76 @@ async def emergency_land_mavsdk(
         print(f"EMERGENCY: land command failed: {exc}")
 
 
+def _start_keyboard_listener(
+    key: str,
+    request_stop: Callable[[str], None],
+) -> Callable[[], None]:
+    """Watch one terminal key in a daemon thread; return a stop callback."""
+    done = threading.Event()
+    key = key.lower()
+
+    def _notify() -> None:
+        request_stop(f"keyboard '{key}'")
+
+    def _posix_loop() -> None:
+        import select
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            while not done.is_set():
+                readable, _, _ = select.select([sys.stdin], [], [], 0.1)
+                if not readable:
+                    continue
+                ch = sys.stdin.read(1)
+                if ch.lower() == key:
+                    _notify()
+                    return
+        finally:
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            except Exception:
+                pass
+
+    def _windows_loop() -> None:
+        import msvcrt
+
+        while not done.is_set():
+            if msvcrt.kbhit():
+                ch = msvcrt.getwch()
+                if ch.lower() == key:
+                    _notify()
+                    return
+            done.wait(0.1)
+
+    def _thread_main() -> None:
+        try:
+            if not sys.stdin or not sys.stdin.isatty():
+                return
+            if os.name == "nt":
+                _windows_loop()
+            else:
+                _posix_loop()
+        except Exception as exc:
+            print(f"Emergency key listener disabled: {exc}")
+
+    thread = threading.Thread(target=_thread_main, daemon=True)
+    thread.start()
+
+    def _stop() -> None:
+        done.set()
+
+    return _stop
+
+
 async def fly_with_emergency_land(
     flight: Awaitable[None],
     drone: "System",
     navigator: "VelocityNavigator | PositionNedNavigator | None" = None,
+    emergency_key: str | None = "e",
 ) -> None:
     """Run a flight coroutine; on Ctrl+C, kill signal, or crash, land first.
 
@@ -64,10 +133,11 @@ async def fly_with_emergency_land(
     loop = asyncio.get_running_loop()
     stop = asyncio.Event()
     installed: list = []
+    keyboard_stop: Callable[[], None] | None = None
 
-    def _request_stop() -> None:
+    def _request_stop(reason: str = "signal") -> None:
         if not stop.is_set():
-            print("\n!!! STOP signal received — emergency landing !!!")
+            print(f"\n!!! EMERGENCY LAND requested by {reason} !!!")
             stop.set()
 
     for name in _STOP_SIGNALS:
@@ -79,6 +149,13 @@ async def fly_with_emergency_land(
             installed.append(sig)
         except (NotImplementedError, RuntimeError):
             pass  # Windows or not in main thread
+
+    if emergency_key:
+        def _keyboard_request(reason: str) -> None:
+            loop.call_soon_threadsafe(_request_stop, reason)
+
+        keyboard_stop = _start_keyboard_listener(emergency_key, _keyboard_request)
+        print(f"Emergency key armed: press '{emergency_key}' to land immediately.")
 
     flight_task = asyncio.ensure_future(flight)
     stop_task = asyncio.ensure_future(stop.wait())
@@ -112,6 +189,8 @@ async def fly_with_emergency_land(
                 pass
         await emergency_land_mavsdk(drone, navigator)
     finally:
+        if keyboard_stop is not None:
+            keyboard_stop()
         for sig in installed:
             try:
                 loop.remove_signal_handler(sig)
