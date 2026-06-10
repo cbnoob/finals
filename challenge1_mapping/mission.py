@@ -69,6 +69,7 @@ async def run_mission(config_path: str | None = None) -> None:
         home_n=home_n,
         home_e=home_e,
         get_yaw=lambda: state["yaw"],
+        get_down=lambda: state["down_m"],
         geofence=geofence,
     )
 
@@ -150,6 +151,7 @@ async def run_mission(config_path: str | None = None) -> None:
                 ignore_height=False,
                 validate_target=False,
             )
+            await navigator.hover(float(m.get("takeoff_settle_s", 1.0)), ignore_height=True)
 
             for i, wp in enumerate(waypoints):
                 tn, te = float(wp["n"]), float(wp["e"])

@@ -52,6 +52,7 @@ mapping_drone:
     - { n: 1.0, e: 0.0 }
     - { n: 1.0, e: 1.0 }
     - { n: 0.0, e: 1.0 }
+  takeoff_settle_s: 1.0
   hover_at_waypoint_s: 2.0
 
 navigation:

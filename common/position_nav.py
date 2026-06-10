@@ -52,6 +52,7 @@ class PositionNedNavigator:
         home_n: float,
         home_e: float,
         get_yaw: Callable[[], float],
+        get_down: Callable[[], float],
         geofence: "ArenaBounds | None" = None,
     ) -> None:
         self.drone = drone
@@ -59,6 +60,7 @@ class PositionNedNavigator:
         self.home_n = home_n
         self.home_e = home_e
         self._get_yaw = get_yaw
+        self._get_down = get_down
         self._geofence = geofence
         self.takeoff_yaw = 0.0
         self._current_target = LocalNedTarget(0.0, 0.0, 0.0)
@@ -90,7 +92,7 @@ class PositionNedNavigator:
         from mavsdk.offboard import OffboardError
 
         self.takeoff_yaw = self._get_yaw()
-        initial = LocalNedTarget(0.0, 0.0, 0.0)
+        initial = LocalNedTarget(0.0, 0.0, self._get_down())
         await self._set_position_velocity(initial, 0.0, 0.0, 0.0)
         try:
             await self.drone.offboard.start()
@@ -133,13 +135,16 @@ class PositionNedNavigator:
 
             err_n = target_n - current_n
             err_e = target_e - current_e
+            current_d = self._get_down()
+            err_d = target_d - current_d
             at_xy = (
                 abs(err_n) < self.gains.n_threshold and
                 abs(err_e) < self.gains.e_threshold
             )
-            if at_xy:
+            at_height = ignore_height or abs(err_d) < self.gains.d_threshold
+            if at_xy and at_height:
                 await self._set_position_velocity(target, 0.0, 0.0, 0.0)
-                print("Waypoint reached")
+                print(f"Waypoint reached (D={current_d:.2f})")
                 return
 
             now = asyncio.get_running_loop().time()
@@ -153,7 +158,13 @@ class PositionNedNavigator:
                     ve = speed * err_e / dist
                 else:
                     vn = ve = 0.0
-                vd = -self.gains.max_vel_z if not ignore_height and target_d < 0 else 0.0
+                if ignore_height:
+                    vd = 0.0
+                else:
+                    vd = max(
+                        -self.gains.max_vel_z,
+                        min(self.gains.max_vel_z, self.gains.kp_z * err_d),
+                    )
                 await self._set_position_velocity(target, vn, ve, vd)
                 last_sent = now
 
@@ -171,8 +182,9 @@ class PositionNedNavigator:
         if self._geofence is not None:
             self._geofence.check_position(hover_n, hover_e)
 
-        target = world_to_local_ned(hover_n, hover_e, 0.0, self.home_n, self.home_e)
-        print(f"Position-NED hover lock N={hover_n:.2f} E={hover_e:.2f}")
+        target_d = self._current_target.down_m if ignore_height else self._get_down()
+        target = world_to_local_ned(hover_n, hover_e, target_d, self.home_n, self.home_e)
+        print(f"Position-NED hover lock N={hover_n:.2f} E={hover_e:.2f} D={target_d:.2f}")
         end = asyncio.get_running_loop().time() + seconds
 
         while asyncio.get_running_loop().time() < end:
@@ -187,7 +199,7 @@ class PositionNedNavigator:
             vn, ve, vd = compute_hover_velocity(
                 hover_n - current_n,
                 hover_e - current_e,
-                0.0,
+                target_d - self._get_down(),
                 self.gains,
                 ignore_height=ignore_height,
             )
