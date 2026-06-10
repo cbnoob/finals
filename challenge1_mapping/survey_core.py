@@ -78,6 +78,7 @@ def process_waypoint(
     )
     cv2.imwrite(str(output_dir / f"occupancy_wp{waypoint_index:02d}.png"), grid)
 
+    waypoint_obstacles: list[tuple[float, float, float, float, float]] = []
     for point in obstacle_points_from_depth(
         depth_m,
         frames.intrinsics.fx,
@@ -89,6 +90,16 @@ def process_waypoint(
         world_n, world_e = marker_world_position(
             drone_n, drone_e, point.x_m, point.y_m, arena.cfg
         )
+        distance_from_origin_m = math.hypot(world_n, world_e)
+        waypoint_obstacles.append(
+            (
+                distance_from_origin_m,
+                point.distance_m,
+                world_n,
+                world_e,
+                point.height_m,
+            )
+        )
         arena.stamp_obstacle(
             world_n,
             world_e,
@@ -96,6 +107,22 @@ def process_waypoint(
             distance_m=point.distance_m,
             waypoint_index=waypoint_index,
         )
+
+    if waypoint_obstacles:
+        nearest = sorted(waypoint_obstacles, key=lambda item: item[0])[:5]
+        print(
+            f"  Obstacles: {len(waypoint_obstacles)} depth points; "
+            f"nearest to origin {nearest[0][0]:.2f}m"
+        )
+        for distance_from_origin_m, distance_from_drone_m, world_n, world_e, height_m in nearest:
+            print(
+                f"    obstacle N={world_n:.2f} E={world_e:.2f} "
+                f"origin_dist={distance_from_origin_m:.2f}m "
+                f"drone_dist={distance_from_drone_m:.2f}m "
+                f"height={height_m:.2f}m"
+            )
+    else:
+        print("  Obstacles: none detected")
 
     annotated = frames.color_bgr.copy()
     markers = aruco.detect(annotated, frames.depth_mm, draw=True)
