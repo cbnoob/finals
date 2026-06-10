@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -181,7 +182,8 @@ def save_mission_report(
                 "n": o.n,
                 "e": o.e,
                 "height_m": o.height_m,
-                "distance_m": o.distance_m,
+                "distance_from_drone_m": o.distance_m,
+                "distance_from_origin_m": math.hypot(o.n, o.e),
                 "waypoint_index": o.waypoint_index,
             }
             for o in sorted(

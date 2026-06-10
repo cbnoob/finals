@@ -28,6 +28,8 @@ def test_dry_run_writes_outputs(tmp_path, monkeypatch):
     assert report["challenge"] == 1
     assert len(report["observations"]) > 0
     assert len(report["obstacles"]) > 0
+    assert "distance_from_origin_m" in report["obstacles"][0]
+    assert "distance_from_drone_m" in report["obstacles"][0]
     assert len(report["detected_marker_ids"]) > 0
     assert len(report["all_landing_zones"]) >= len(report["valid_landing_zones"])
     assert len(report["valid_landing_zones"]) > 0
