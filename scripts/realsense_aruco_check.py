@@ -51,6 +51,12 @@ def main() -> None:
     parser.add_argument("--warmup", type=int, default=10, help="Frames to discard first")
     parser.add_argument("--show", action="store_true", help="Show live preview window")
     parser.add_argument(
+        "--image-source",
+        choices=("auto", "color", "infrared"),
+        default="auto",
+        help="Use RGB color, Infrared 1, or auto fallback",
+    )
+    parser.add_argument(
         "--out-dir",
         default=str(ROOT / "output" / "aruco_check"),
         help="Directory for annotated frames",
@@ -71,6 +77,7 @@ def main() -> None:
         width=int(m.get("camera_width", 1280)),
         height=int(m.get("camera_height", 720)),
         fps=int(m.get("camera_fps", 30)),
+        image_source=args.image_source,
     )
     detector = ArucoDepthDetector(
         fx=rs.intrinsics.fx,
