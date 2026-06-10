@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from challenge1_mapping.arena_map import ArenaMap, ArenaMapConfig
+from challenge1_mapping.sim.arena_world import SimObstacle, random_obstacles
 from challenge1_mapping.sim.fake_navigator import FakeVelocityNavigator
 from challenge1_mapping.sim.fake_realsense import FakeRealSenseCapture
 from challenge1_mapping.survey_core import (
@@ -45,7 +46,11 @@ from detection.occupancy_grid import GridConfig
 OUTPUT_DIR = ROOT / "output" / "challenge1"
 
 
-async def run_dry_mission(config_path: str | None = None, fast: bool = False) -> None:
+async def run_dry_mission(
+    config_path: str | None = None,
+    fast: bool = False,
+    sim_obstacles: list[SimObstacle] | None = None,
+) -> None:
     cfg = load_config(config_path)
     m = cfg["mapping_drone"]
     nav_cfg = cfg["navigation"]
@@ -69,6 +74,7 @@ async def run_dry_mission(config_path: str | None = None, fast: bool = False) ->
     )
 
     rs = FakeRealSenseCapture(
+        obstacles=sim_obstacles,
         arena_cfg=arena_cfg,
         camera_height_m=float(m.get("takeoff_height_m", 2.0)),
         dictionary_name=m.get("aruco_dictionary", "DICT_7X7_1000"),
@@ -140,12 +146,60 @@ async def run_dry_mission(config_path: str | None = None, fast: bool = False) ->
     print("\nDry run complete. Open output/challenge1/arena_map.png to review.")
 
 
+async def run_random_obstacle_dry_mission(
+    config_path: str | None = None,
+    *,
+    fast: bool = False,
+    obstacle_count: int = 8,
+    seed: int = 7,
+    max_height_m: float = 1.1,
+) -> None:
+    cfg = load_config(config_path)
+    bounds_raw = cfg.get("arena", {}).get("uwb_bounds", {})
+    obstacles = random_obstacles(
+        obstacle_count,
+        seed=seed,
+        n_min=float(bounds_raw.get("n_min", 0.0)) + 0.5,
+        n_max=float(bounds_raw.get("n_max", 10.0)) - 0.5,
+        e_min=float(bounds_raw.get("e_min", 0.0)) + 0.5,
+        e_max=float(bounds_raw.get("e_max", 5.0)) - 0.5,
+        max_height_m=max_height_m,
+    )
+    print("Random simulated obstacles:")
+    for i, obs in enumerate(obstacles, 1):
+        print(
+            f"  {i}: N=[{obs.n0:.2f},{obs.n1:.2f}] "
+            f"E=[{obs.e0:.2f},{obs.e1:.2f}] height={obs.height_m:.2f}m"
+        )
+
+    await run_dry_mission(config_path=config_path, fast=fast, sim_obstacles=obstacles)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Simulated Challenge 1 mission")
     parser.add_argument("config", nargs="?", help="Path to challenge.yaml")
     parser.add_argument("--fast", action="store_true", help="Shorter hover / faster sim")
+    parser.add_argument("--random-obstacles", type=int, default=0, help="Use N random sim obstacles")
+    parser.add_argument("--obstacle-seed", type=int, default=7, help="Random obstacle seed")
+    parser.add_argument(
+        "--max-obstacle-height",
+        type=float,
+        default=1.1,
+        help="Maximum random obstacle height in meters",
+    )
     args = parser.parse_args()
-    asyncio.run(run_dry_mission(args.config, fast=args.fast))
+    if args.random_obstacles:
+        asyncio.run(
+            run_random_obstacle_dry_mission(
+                args.config,
+                fast=args.fast,
+                obstacle_count=args.random_obstacles,
+                seed=args.obstacle_seed,
+                max_height_m=args.max_obstacle_height,
+            )
+        )
+    else:
+        asyncio.run(run_dry_mission(args.config, fast=args.fast))
 
 
 if __name__ == "__main__":
