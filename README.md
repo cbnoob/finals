@@ -20,6 +20,7 @@ run_challenge2.py
 scripts/train_yolo.py      # Train detector on laptop
 scripts/aruco_demo.py      # Visual ArUco check (no hardware)
 scripts/occupancy_demo.py  # Visual occupancy grid check (no hardware)
+scripts/sample_run.py      # Fallback movement-only sample run
 ```
 
 ## Emergency landing (fail-safe)
@@ -150,6 +151,18 @@ whatever model you export. Originals kept in `reference/organizer_samples/`.
 cd roboverse-drone-challenge
 python3 run_challenge1.py
 ```
+
+**Fallback sample run** (movement only, no camera/map). Use this if the full
+mapper is failing onsite and you need a simple direct-UWB movement run:
+
+```bash
+cd roboverse-drone-challenge
+python3 scripts/sample_run.py
+```
+
+This fallback holds 2 m, caps movement at 0.3 m/s, uses the organiser-style
+direct UWB `PositionNedYaw(N, E, -2.0)`, prints UWB distance in the terminal,
+and lands immediately when you press `e`.
 
 **What it does** (stitched from the organizer samples):
 
