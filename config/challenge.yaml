@@ -60,7 +60,7 @@ mapping_drone:
     - { n: 1.0, e: 1.0 }
     - { n: 0.0, e: 1.0 }
   continuous_capture_enabled: true
-  continuous_capture_interval_s: 1.0
+  continuous_capture_interval_s: 0.5
   takeoff_settle_s: 1.0
   hover_at_waypoint_s: 2.0
 

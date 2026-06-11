@@ -213,6 +213,22 @@ async def run_mission(config_path: str | None = None) -> None:
                 await asyncio.sleep(0.1)
             await flight
 
+        async def _hover_with_captures(seconds: float, label: str) -> None:
+            hover = asyncio.create_task(navigator.hover(seconds, ignore_height=False))
+            if not continuous_capture_enabled:
+                await hover
+                return
+
+            loop = asyncio.get_running_loop()
+            next_capture = loop.time() + continuous_capture_interval_s
+            while not hover.done():
+                now = loop.time()
+                if now >= next_capture:
+                    await _capture_current(f"{label} hover", required=False)
+                    next_capture = loop.time() + continuous_capture_interval_s
+                await asyncio.sleep(0.1)
+            await hover
+
         async def _flight() -> None:
             """Arm → survey → normal land. Any error here (including a geofence
             breach / dangerous location) propagates to the emergency lander."""
@@ -233,8 +249,9 @@ async def run_mission(config_path: str | None = None) -> None:
                 tn, te = float(wp["n"]), float(wp["e"])
                 print(f"--- Waypoint {i + 1}/{len(waypoints)} -> N={tn:.2f} E={te:.2f} ---")
                 await _fly_to_with_captures(tn, te, takeoff_d, f"waypoint {i + 1}")
-                await navigator.hover(hover_s, ignore_height=False)
-                await _capture_current(f"waypoint {i + 1} hover", required=True)
+                await _capture_current(f"waypoint {i + 1} arrival", required=True)
+                await _hover_with_captures(hover_s, f"waypoint {i + 1}")
+                await _capture_current(f"waypoint {i + 1} hover final", required=True)
 
             await navigator.send_velocity(0.0, 0.0, 0.0)
             await drone.offboard.stop()
