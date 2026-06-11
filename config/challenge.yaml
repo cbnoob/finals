@@ -25,13 +25,12 @@ mapping_drone:
   camera_width: 1280
   camera_height: 720
   camera_fps: 30
-  camera_image_source: "auto"  # auto | color | infrared
+  camera_image_source: "infrared"  # auto | color | infrared
   disable_ir_emitter: true
-  # Leave exposure/gain null until tested onsite. If marker whites are washed out,
-  # try lower exposure values in scripts/realsense_aruco_check.py first.
-  camera_auto_exposure: null
-  camera_exposure: null
-  camera_gain: null
+  # Onsite D430 IR tuning: avoids marker glare under bright arena lights.
+  camera_auto_exposure: false
+  camera_exposure: 3800
+  camera_gain: 16
   # Camera intrinsics: leave null to read from RealSense at runtime
   fx: null
   fy: null

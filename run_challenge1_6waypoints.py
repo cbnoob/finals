@@ -1,8 +1,8 @@
 """Entry: fast 6-waypoint FOV mapper for Challenge 1.
 
-This mode is a faster alternative to the full lawnmower survey. It uses the
-D430 depth/IR footprint at 2 m to cover the 10 m x 5 m arena with a 3 x 2
-waypoint pattern. It still runs the normal Challenge 1 camera/map pipeline.
+This mode is a faster alternative to the full lawnmower survey. It keeps the
+path inside a conservative central strip, using the D430 IR/depth footprint at
+2 m to see markers near the arena edges without flying close to the nets.
 """
 
 from __future__ import annotations
@@ -18,12 +18,12 @@ from common.config_loader import load_config
 
 
 SIX_WAYPOINTS = [
-    {"n": 2.0, "e": 1.4},
-    {"n": 5.0, "e": 1.4},
-    {"n": 8.3, "e": 1.7},
-    {"n": 8.3, "e": 3.6},
-    {"n": 5.0, "e": 3.6},
-    {"n": 2.0, "e": 3.6},
+    {"n": 2.0, "e": 1.2},
+    {"n": 5.0, "e": 1.2},
+    {"n": 8.3, "e": 1.2},
+    {"n": 8.3, "e": 2.6},
+    {"n": 5.0, "e": 2.6},
+    {"n": 2.0, "e": 2.6},
 ]
 
 
@@ -46,8 +46,8 @@ def _write_temp_config() -> str:
 
 def main() -> None:
     print("=== Challenge 1: 6-waypoint FOV mapper ===")
-    print("Waypoints: (2.0,1.4), (5.0,1.4), (8.3,1.7), (8.3,3.6), (5.0,3.6), (2.0,3.6)")
-    print("This is faster than lawnmower but less exhaustive.")
+    print("Waypoints: (2.0,1.2), (5.0,1.2), (8.3,1.2), (8.3,2.6), (5.0,2.6), (2.0,2.6)")
+    print("Conservative route: stays away from the right-side net.")
     asyncio.run(run_mission(_write_temp_config()))
 
 
