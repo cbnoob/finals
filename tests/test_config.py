@@ -23,3 +23,8 @@ def test_navigation_gains_present():
     nav = load_config()["navigation"]
     for key in ("kp_xy", "kp_z", "max_vel_xy", "max_vel_z", "n_threshold"):
         assert key in nav
+
+
+def test_mapping_speed_is_configured_for_safe_capture():
+    nav = load_config()["navigation"]
+    assert nav["max_vel_xy"] <= 0.2

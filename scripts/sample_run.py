@@ -29,7 +29,7 @@ from common.uwb_listener import get_uwb_position, shutdown_uwb, start_uwb_thread
 from challenge1_mapping.survey_core import order_waypoints_from_start
 
 
-DEFAULT_SPEED_MPS = 0.3
+DEFAULT_SPEED_MPS = 0.2
 DEFAULT_HEIGHT_M = 2.0
 DEFAULT_POSITION_STEP_M = 0.4
 DEFAULT_WAYPOINTS = [

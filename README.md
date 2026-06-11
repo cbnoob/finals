@@ -55,9 +55,9 @@ on competition day.
 
 The finals brief sets hard rules — these are enforced in `config/challenge.yaml`:
 
-- **Mapping drone max 0.3 m/s** → `navigation.max_vel_xy: 0.3` (and `max_vel_z: 0.3`).
+- **Mapping drone max 0.3 m/s by brief; configured safer at 0.2 m/s** → `navigation.max_vel_xy: 0.2` (and `max_vel_z: 0.3`).
 - **HULA max 0.5 m/s** → `swarm.move_speed: 0.5`. The swarm's P-controller cap is set
-  to `move_speed` in `swarm_core` so it is *independent* of the mapping drone's 0.3 limit.
+  to `move_speed` in `swarm_core` so it is *independent* of the mapping drone's lower configured speed.
   (Assumes pyhulax `move()` speed is m/s — **verify the unit on the test drone**.)
 - **HULA recommended height 1.1 m** → `swarm.hover_height_m: 1.1` (applied on takeoff;
   the code tries `takeoff(height)` and falls back to a plain `takeoff()`).
@@ -170,7 +170,7 @@ cd roboverse-drone-challenge
 python3 scripts/sample_run.py
 ```
 
-This fallback holds 2 m, caps movement at 0.3 m/s, uses the organiser-style
+This fallback holds 2 m, caps movement at 0.2 m/s, uses the organiser-style
 direct UWB `PositionNedYaw(N, E, -2.0)`, prints UWB distance in the terminal,
 and lands immediately when you press `e`.
 

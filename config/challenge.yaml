@@ -63,12 +63,12 @@ mapping_drone:
   hover_at_waypoint_s: 2.0
 
 navigation:
-  # Mapping drone P-controller. BRIEF RULE: max speed 0.3 m/s for the mapping drone,
-  # so the horizontal/vertical velocity caps are clamped to 0.3. (The swarm overrides
-  # its own cap to swarm.move_speed — see swarm_core.)
+  # Mapping drone P-controller. BRIEF RULE: max speed is 0.3 m/s, but we use
+  # 0.2 m/s for safer onsite motion and more stable camera capture. (The swarm
+  # overrides its own cap to swarm.move_speed — see swarm_core.)
   kp_xy: 0.1
   kp_z: 0.1
-  max_vel_xy: 0.3          # mapping drone max horizontal speed (m/s) — brief limit
+  max_vel_xy: 0.2          # mapping drone max horizontal speed (m/s), below 0.3 m/s brief limit
   max_vel_z: 0.3           # mapping drone max vertical speed (m/s)
   max_position_step_m: 0.4 # rolling PositionNED target distance; avoids far-target rushes
   max_hover_xy: 0.15
