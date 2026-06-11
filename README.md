@@ -149,6 +149,15 @@ whatever model you export. Originals kept in `reference/organizer_samples/`.
 
 **Dependencies (Ubuntu 22.04):** ROS2 Humble, `mavsdk`, `pyrealsense2`, `opencv-python`, `rclpy`.
 
+After copying/pulling the repo onto the drone computer, you can run the
+idempotent installer. It checks imports first and only installs missing pieces:
+
+```bash
+cd roboverse-drone-challenge
+bash scripts/install_drone_deps.sh
+python3 scripts/check_env.py
+```
+
 ```bash
 cd roboverse-drone-challenge
 python3 run_challenge1.py
