@@ -16,6 +16,8 @@ challenge1_mapping/        # Mapping mission → landing_pad_report.json
 challenge2_swarm/          # Swarm FSM + snapshots
 reference/organizer_samples/  # Unmodified organizer sample codes (RealSense, RKNN)
 run_challenge1.py
+run_challenge1_lawnmower.py
+run_challenge1_6waypoints.py
 run_challenge2.py
 scripts/train_yolo.py      # Train detector on laptop
 scripts/aruco_demo.py      # Visual ArUco check (no hardware)
@@ -151,6 +153,14 @@ whatever model you export. Originals kept in `reference/organizer_samples/`.
 cd roboverse-drone-challenge
 python3 run_challenge1.py
 ```
+
+Choose one of three Challenge 1 modes:
+
+| Mode | Command | Use when |
+|---|---|---|
+| Full lawnmower | `python3 run_challenge1_lawnmower.py` | Best scoring reliability; maps the full arena with many waypoints. |
+| 6-waypoint FOV | `python3 run_challenge1_6waypoints.py` | Faster run using D430 FOV coverage at 2 m; less exhaustive. |
+| Sample movement | `python3 scripts/sample_run.py` | Movement-only fallback; no camera/map, useful if the mapper is unstable. |
 
 **Fallback sample run** (movement only, no camera/map). Use this if the full
 mapper is failing onsite and you need a simple direct-UWB movement run:
