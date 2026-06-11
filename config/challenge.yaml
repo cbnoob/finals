@@ -59,6 +59,8 @@ mapping_drone:
     - { n: 1.0, e: 0.0 }
     - { n: 1.0, e: 1.0 }
     - { n: 0.0, e: 1.0 }
+  continuous_capture_enabled: true
+  continuous_capture_interval_s: 1.0
   takeoff_settle_s: 1.0
   hover_at_waypoint_s: 2.0
 
@@ -68,7 +70,7 @@ navigation:
   # overrides its own cap to swarm.move_speed — see swarm_core.)
   kp_xy: 0.1
   kp_z: 0.1
-  max_vel_xy: 0.2          # mapping drone max horizontal speed (m/s), below 0.3 m/s brief limit
+  max_vel_xy: 0.15         # mapping drone max horizontal speed (m/s), below 0.3 m/s brief limit
   max_vel_z: 0.3           # mapping drone max vertical speed (m/s)
   max_position_step_m: 0.4 # rolling PositionNED target distance; avoids far-target rushes
   max_hover_xy: 0.15

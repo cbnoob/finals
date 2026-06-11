@@ -203,6 +203,14 @@ after every processed waypoint. If you press `Ctrl+C` or `e` to emergency-land,
 the cleanup path saves the latest partial map/report with
 `mission_status: "partial"`.
 
+Challenge 1 also captures while travelling between waypoints, then captures
+again after each waypoint hover. Tune it in `config/challenge.yaml`:
+
+```yaml
+continuous_capture_enabled: true
+continuous_capture_interval_s: 1.0
+```
+
 ## Challenge 2 — Swarm
 
 **Where:** C2 laptop on the **same WiFi** as HULA drones.

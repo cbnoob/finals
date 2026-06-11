@@ -153,6 +153,65 @@ async def run_mission(config_path: str | None = None) -> None:
             return
 
         hover_s = float(m.get("hover_at_waypoint_s", 2.0))
+        continuous_capture_enabled = bool(m.get("continuous_capture_enabled", True))
+        continuous_capture_interval_s = max(
+            0.2,
+            float(m.get("continuous_capture_interval_s", 1.0)),
+        )
+        capture_index = 0
+
+        def _capture_sync(index: int, label: str) -> None:
+            drone_n, drone_e, _ = get_uwb_position()
+            frames = rs.get_frames()
+            print(
+                f"--- Capture {index:02d} ({label}) "
+                f"at N={drone_n:.2f} E={drone_e:.2f} ---"
+            )
+            process_waypoint(
+                index, drone_n, drone_e, frames, aruco, arena, observations,
+                OUTPUT_DIR, grid_cfg,
+            )
+            save_mission_report(
+                arena,
+                observations,
+                OUTPUT_DIR,
+                simulated=False,
+                mission_status="partial",
+            )
+
+        async def _capture_current(label: str, *, required: bool) -> None:
+            nonlocal capture_index
+            index = capture_index
+            capture_index += 1
+            try:
+                await asyncio.to_thread(_capture_sync, index, label)
+            except Exception as exc:
+                print(f"Capture {index:02d} ({label}) failed: {exc}")
+                if required:
+                    raise
+
+        async def _fly_to_with_captures(
+            target_n: float,
+            target_e: float,
+            target_d: float,
+            label: str,
+        ) -> None:
+            flight = asyncio.create_task(
+                navigator.fly_to(target_n, target_e, target_d, ignore_height=False)
+            )
+            if not continuous_capture_enabled:
+                await flight
+                return
+
+            loop = asyncio.get_running_loop()
+            next_capture = loop.time()
+            while not flight.done():
+                now = loop.time()
+                if now >= next_capture:
+                    await _capture_current(f"{label} travel", required=False)
+                    next_capture = loop.time() + continuous_capture_interval_s
+                await asyncio.sleep(0.1)
+            await flight
 
         async def _flight() -> None:
             """Arm → survey → normal land. Any error here (including a geofence
@@ -168,26 +227,14 @@ async def run_mission(config_path: str | None = None) -> None:
                 validate_target=False,
             )
             await navigator.hover(float(m.get("takeoff_settle_s", 1.0)), ignore_height=False)
+            await _capture_current("takeoff settle", required=False)
 
             for i, wp in enumerate(waypoints):
                 tn, te = float(wp["n"]), float(wp["e"])
                 print(f"--- Waypoint {i + 1}/{len(waypoints)} -> N={tn:.2f} E={te:.2f} ---")
-                await navigator.fly_to(tn, te, takeoff_d, ignore_height=False)
+                await _fly_to_with_captures(tn, te, takeoff_d, f"waypoint {i + 1}")
                 await navigator.hover(hover_s, ignore_height=False)
-
-                drone_n, drone_e, _ = get_uwb_position()
-                frames = rs.get_frames()
-                process_waypoint(
-                    i, drone_n, drone_e, frames, aruco, arena, observations,
-                    OUTPUT_DIR, grid_cfg,
-                )
-                save_mission_report(
-                    arena,
-                    observations,
-                    OUTPUT_DIR,
-                    simulated=False,
-                    mission_status="partial",
-                )
+                await _capture_current(f"waypoint {i + 1} hover", required=True)
 
             await navigator.send_velocity(0.0, 0.0, 0.0)
             await drone.offboard.stop()
