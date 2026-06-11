@@ -211,6 +211,7 @@ def save_mission_report(
     output_dir: Path,
     *,
     simulated: bool = False,
+    mission_status: str = "complete",
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(output_dir / "arena_map.png"), arena.render_bgr())
@@ -232,6 +233,8 @@ def save_mission_report(
     report = {
         "challenge": 1,
         "simulated": simulated,
+        "mission_status": mission_status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
         "arena_bounds": {
             "n_min": arena.cfg.n_min,
             "n_max": arena.cfg.n_max,

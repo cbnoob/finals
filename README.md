@@ -189,6 +189,11 @@ and lands immediately when you press `e`.
 - `arena_map.png` — top-down map: survey path + valid (green) / invalid (red) pads
 - `occupancy_wpNN.png` — per-waypoint occupancy grids
 
+During Challenge 1, `arena_map.png` and `landing_pad_report.json` are refreshed
+after every processed waypoint. If you press `Ctrl+C` or `e` to emergency-land,
+the cleanup path saves the latest partial map/report with
+`mission_status: "partial"`.
+
 ## Challenge 2 — Swarm
 
 **Where:** C2 laptop on the **same WiFi** as HULA drones.

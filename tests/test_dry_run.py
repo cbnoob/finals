@@ -26,6 +26,8 @@ def test_dry_run_writes_outputs(tmp_path, monkeypatch):
     report = json.loads((out / "landing_pad_report.json").read_text(encoding="utf-8"))
     assert report["simulated"] is True
     assert report["challenge"] == 1
+    assert report["mission_status"] == "complete"
+    assert "updated_at" in report
     assert len(report["observations"]) > 0
     assert len(report["obstacles"]) > 0
     assert "distance_from_origin_m" in report["obstacles"][0]

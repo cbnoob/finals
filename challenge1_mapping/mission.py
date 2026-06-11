@@ -109,6 +109,7 @@ async def run_mission(config_path: str | None = None) -> None:
     grid_cfg = GridConfig()
     observations: list[dict] = []
     takeoff_d = -float(m["takeoff_height_m"])
+    mission_complete = False
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -156,6 +157,7 @@ async def run_mission(config_path: str | None = None) -> None:
         async def _flight() -> None:
             """Arm → survey → normal land. Any error here (including a geofence
             breach / dangerous location) propagates to the emergency lander."""
+            nonlocal mission_complete
             await drone.action.arm()
             await navigator.start_offboard()
             await navigator.fly_to(
@@ -179,6 +181,13 @@ async def run_mission(config_path: str | None = None) -> None:
                     i, drone_n, drone_e, frames, aruco, arena, observations,
                     OUTPUT_DIR, grid_cfg,
                 )
+                save_mission_report(
+                    arena,
+                    observations,
+                    OUTPUT_DIR,
+                    simulated=False,
+                    mission_status="partial",
+                )
 
             await navigator.send_velocity(0.0, 0.0, 0.0)
             await drone.offboard.stop()
@@ -191,6 +200,7 @@ async def run_mission(config_path: str | None = None) -> None:
                 await drone.action.disarm()
             except Exception:
                 pass
+            mission_complete = True
 
         # Ctrl+C, kill signal, crash, or geofence breach -> land before exiting.
         try:
@@ -203,10 +213,18 @@ async def run_mission(config_path: str | None = None) -> None:
         await emergency_land_mavsdk(drone, navigator)
         raise
     finally:
+        try:
+            save_mission_report(
+                arena,
+                observations,
+                OUTPUT_DIR,
+                simulated=False,
+                mission_status="complete" if mission_complete else "partial",
+            )
+        except Exception as exc:
+            print(f"Could not save latest map/report during cleanup: {exc}")
         rs.stop()
         shutdown_uwb()
-
-    save_mission_report(arena, observations, OUTPUT_DIR, simulated=False)
 
 
 def main() -> None:
